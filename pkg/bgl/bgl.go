@@ -1,6 +1,7 @@
 package bgl
 
 import (
+	"fmt"
 	"image/color"
 
 	"github.com/go-gl/gl/v4.6-core/gl"
@@ -14,7 +15,7 @@ import (
 // window.MakeContextCurrent(). Also, always call this function when switching contexts.
 func Init() error {
 	if err := gl.Init(); err != nil {
-		return err
+		return fmt.Errorf("failed to initialize opengl: %v", err)
 	}
 
 	gl.Enable(gl.BLEND)

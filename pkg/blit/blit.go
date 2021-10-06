@@ -1,6 +1,8 @@
 package blit
 
 import (
+	"fmt"
+
 	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/magnta/blit/pkg/bgl"
 )
@@ -13,8 +15,13 @@ const (
 
 func Init() error {
 	if err := bgl.Init(); err != nil {
-		return err
+		return fmt.Errorf("failed to initialize bgl: %v", err)
 	}
 
 	return nil
+}
+
+func End() {
+	glfw.GetCurrentContext().SwapBuffers()
+	glfw.PollEvents()
 }
