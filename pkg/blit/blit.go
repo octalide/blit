@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/go-gl/glfw/v3.3/glfw"
-	"github.com/magnta/blit/pkg/bgl"
+	"github.com/octalide/blit/pkg/bgl"
 )
 
 const (
