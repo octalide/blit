@@ -5,7 +5,6 @@ import (
 	"runtime"
 
 	"github.com/go-gl/gl/v4.6-core/gl"
-	"github.com/go-gl/mathgl/mgl32"
 )
 
 type Filter int32
@@ -18,29 +17,25 @@ const (
 
 // Texture is an OpenGL texture.
 type Texture struct {
-	binder
+	ID            uint32
 	width, height int
 	filter        int32
 }
 
 // NewTexture creates a new texture with the specified width and height with some initial
 // pixel values. The pixels must be a sequence of RGBA values (one byte per component).
-func NewTexture(width, height int, filter Filter, img *image.RGBA) *Texture {
+func NewTexture(img *image.RGBA, filter Filter) *Texture {
+	width := img.Rect.Max.X - img.Rect.Min.X
+	height := img.Rect.Max.Y - img.Rect.Min.Y
+
 	tex := &Texture{
-		binder: binder{
-			binding: TextureBinding2D,
-			bindFunc: func(id uint32) {
-				gl.BindTexture(gl.TEXTURE_2D, id)
-			},
-		},
 		width:  width,
 		height: height,
 	}
 
-	gl.GenTextures(1, &tex.id)
+	gl.GenTextures(1, &tex.ID)
 
-	tex.Begin()
-	defer tex.End()
+	tex.Bind()
 
 	// initial data
 	gl.TexImage2D(
@@ -55,25 +50,25 @@ func NewTexture(width, height int, filter Filter, img *image.RGBA) *Texture {
 		gl.Ptr(img.Pix),
 	)
 
-	borderColor := mgl32.Vec4{0, 0, 0, 0}
-	gl.TexParameterfv(gl.TEXTURE_2D, gl.TEXTURE_BORDER_COLOR, &borderColor[0])
-	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
-	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
+	/*
+		borderColor := mgl32.Vec4{0, 0, 0, 0}
+		gl.TexParameterfv(gl.TEXTURE_2D, gl.TEXTURE_BORDER_COLOR, &borderColor[0])
+		gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
+		gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
+	*/
 
 	tex.SetFilter(filter)
 
-	runtime.SetFinalizer(tex, (*Texture).delete)
+	tex.Unbind()
+
+	runtime.SetFinalizer(tex, (*Texture).Delete)
 
 	return tex
 }
 
-func (t *Texture) delete() {
-	gl.DeleteTextures(1, &t.id)
-}
-
-// ID returns the OpenGL ID of this Texture.
-func (t *Texture) ID() uint32 {
-	return t.id
+// Delete deletes the Texture.
+func (t *Texture) Delete() {
+	gl.DeleteTextures(1, &t.ID)
 }
 
 // Width returns the width of the Texture in pixels.
@@ -86,8 +81,8 @@ func (t *Texture) Height() int {
 	return t.height
 }
 
-// SetPixels sets the content of a sub-region of the Texture. Pixels must be an RGBA byte sequence.
-func (t *Texture) SetPixels(x, y, w, h int, img image.RGBA) {
+// SetPixels sets the content of a sub-region of the Texture
+func (t *Texture) SetPixels(x, y, w, h int, img *image.RGBA) {
 	if len(img.Pix) != w*h*4 {
 		panic("set pixels: wrong number of pixels")
 	}
@@ -127,10 +122,7 @@ func (t *Texture) Pixels(x, y, w, h int) []uint8 {
 	return subPixels
 }
 
-// SetSmooth sets whether the Texture should be drawn "smoothly" or "pixely".
-//
-// It affects how the Texture is drawn when zoomed. Smooth interpolates between the neighbour
-// pixels, while pixely always chooses the nearest pixel.
+// SetFilter sets the filter of the Texture.
 func (t *Texture) SetFilter(filter Filter) {
 	t.filter = int32(filter)
 
@@ -138,12 +130,20 @@ func (t *Texture) SetFilter(filter Filter) {
 	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, t.filter)
 }
 
-// Begin binds the Texture. This is necessary before using the Texture.
-func (t *Texture) Begin() {
-	t.bind()
+// Bind binds the Texture
+func (t *Texture) Bind() {
+	gl.BindTexture(gl.TEXTURE_2D, t.ID)
 }
 
-// End unbinds the Texture and restores the previous one.
-func (t *Texture) End() {
-	t.restore()
+// Unbind unbinds the Texture
+func (t *Texture) Unbind() {
+	gl.BindTexture(gl.TEXTURE_2D, 0)
+}
+
+// UV returns the uv coordinates of the Texture (utility function)
+func (t *Texture) UV(x, y float32) [2]float32 {
+	return [2]float32{
+		float32(x) / float32(t.width),
+		float32(y) / float32(t.height),
+	}
 }

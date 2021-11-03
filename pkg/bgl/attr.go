@@ -1,23 +1,74 @@
 package bgl
 
-import "github.com/go-gl/gl/v4.6-core/gl"
+import (
+	"fmt"
 
-type AttrFormat map[string]Attr
+	"github.com/go-gl/gl/v4.6-core/gl"
+)
 
+type AttrFormat []Attr
+
+// Find returns the attribute with the given name
+func (a AttrFormat) Find(name string) (attr Attr, ok bool) {
+	for _, attr = range a {
+		if attr.Name == name {
+			ok = true
+			return
+		}
+	}
+
+	return
+}
+
+// Size gets the size in elements of the attribute format
 func (a AttrFormat) Size() (total int) {
 	for _, attr := range a {
-		total += int(attr.Size)
+		total += attr.Size()
+	}
+
+	return
+}
+
+// Len gets the size in bytes of the attrbute format
+func (a AttrFormat) Len() (total int) {
+	for _, attr := range a {
+		total += attr.Len()
+	}
+
+	return
+}
+
+// Offsets returns the offsets of the attribute in the buffer
+func (a AttrFormat) Offsets() (offsets []int) {
+	offsets = make([]int, len(a))
+	offset := 0
+	for i, attr := range a {
+		offsets[i] = offset
+		offset += attr.Len()
 	}
 
 	return
 }
 
 type Attr struct {
-	Name string
-	Type uint32
-	Loc  int32
-	Size int32
-	Len  int32
+	Type       AttrType
+	Name       string
+	Loc        int32
+	Normalized bool
+}
+
+// Size gets the size in floats of the attribute
+func (a Attr) Size() int {
+	return int(a.Type.Size())
+}
+
+// Len gets the size in bytes of the attribute
+func (a Attr) Len() int {
+	return int(a.Type.Len())
+}
+
+func (a Attr) String() string {
+	return fmt.Sprintf("{name: %v, type: %v, loc: %v, size: %v, len: %v, norm: %v}", a.Name, a.Type, a.Loc, a.Size(), a.Len(), a.Normalized)
 }
 
 type AttrType uint32
@@ -58,3 +109,113 @@ const (
 	Mat4x2d = AttrType(gl.DOUBLE_MAT4x2)
 	Mat4x3d = AttrType(gl.DOUBLE_MAT4x3)
 )
+
+// Size gets the size in elements of an attribute type
+func (a AttrType) Size() int {
+	switch a {
+	case Float:
+		return 1
+	case Vec2f, Vec2i, Vec2ui, Vec2d:
+		return 2
+	case Vec3f, Vec3i, Vec3ui, Vec3d:
+		return 3
+	case Vec4f, Vec4i, Vec4ui, Vec4d:
+		return 4
+	case Mat2f, Mat2d:
+		return 4
+	case Mat3f, Mat3d:
+		return 9
+	case Mat4f, Mat4d:
+		return 16
+	case Mat2x3f, Mat2x3d:
+		return 6
+	case Mat2x4f, Mat2x4d:
+		return 8
+	case Mat3x2f, Mat3x2d:
+		return 6
+	case Mat3x4f, Mat3x4d:
+		return 12
+	case Mat4x2f, Mat4x2d:
+		return 8
+	case Mat4x3f, Mat4x3d:
+		return 12
+	default:
+		panic(fmt.Sprintf("Unknown attribute type: %d", a))
+	}
+}
+
+// Len gets the size in bytes of an attribute type.
+func (a AttrType) Len() int {
+	switch a {
+	case Float:
+		return 4
+	case Vec2f:
+		return 8
+	case Vec3f:
+		return 12
+	case Vec4f:
+		return 16
+	case Mat2f:
+		return 16
+	case Mat3f:
+		return 36
+	case Mat4f:
+		return 64
+	case Mat2x3f:
+		return 24
+	case Mat2x4f:
+		return 32
+	case Mat3x2f:
+		return 24
+	case Mat3x4f:
+		return 48
+	case Mat4x2f:
+		return 32
+	case Mat4x3f:
+		return 48
+	case Int:
+		return 4
+	case Vec2i:
+		return 8
+	case Vec3i:
+		return 12
+	case Vec4i:
+		return 16
+	case UInt:
+		return 4
+	case Vec2ui:
+		return 8
+	case Vec3ui:
+		return 12
+	case Vec4ui:
+		return 16
+	case Double:
+		return 8
+	case Vec2d:
+		return 16
+	case Vec3d:
+		return 24
+	case Vec4d:
+		return 32
+	case Mat2d:
+		return 32
+	case Mat3d:
+		return 72
+	case Mat4d:
+		return 128
+	case Mat2x3d:
+		return 48
+	case Mat2x4d:
+		return 64
+	case Mat3x2d:
+		return 48
+	case Mat3x4d:
+		return 96
+	case Mat4x2d:
+		return 64
+	case Mat4x3d:
+		return 96
+	default:
+		return 0
+	}
+}

@@ -18,19 +18,24 @@ func Init() error {
 		return fmt.Errorf("failed to initialize opengl: %v", err)
 	}
 
-	gl.Enable(gl.BLEND)
-	gl.Enable(gl.SCISSOR_TEST)
-	gl.BlendEquation(gl.FUNC_ADD)
+	// gl.Enable(gl.BLEND)
+	// gl.BlendEquation(gl.FUNC_ADD)
+	// gl.Enable(gl.SCISSOR_TEST)
+	// gl.Enable(gl.DEPTH_TEST)
+
+	// gl.Enable(gl.CULL_FACE)
+	// gl.FrontFace(gl.CCW)
+	// gl.CullFace(gl.BACK)
 
 	return nil
 }
 
 func SetClearColor(c color.RGBA) {
 	gl.ClearColor(
-		255/float32(c.R),
-		255/float32(c.G),
-		255/float32(c.B),
-		255/float32(c.A),
+		float32(c.R)/255.0,
+		float32(c.G)/255.0,
+		float32(c.B)/255.0,
+		float32(c.A)/255.0,
 	)
 }
 

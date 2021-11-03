@@ -21,7 +21,7 @@ func Init() error {
 	return nil
 }
 
-func End() {
+func Update() {
 	glfw.GetCurrentContext().SwapBuffers()
 	glfw.PollEvents()
 }

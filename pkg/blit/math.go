@@ -5,101 +5,274 @@ import (
 	"math"
 )
 
-type Vec struct {
-	X, Y float64
+// Vec is a 4D vector
+type Vec [4]float32
+
+// F returns the vector as a [4]float32 array (convenience function)
+func (v Vec) F() [4]float32 {
+	return [4]float32(v)
 }
 
+// X returns the x component of the vector
+func (v Vec) X() float32 {
+	return v[0]
+}
+
+// Y returns the y component of the vector
+func (v Vec) Y() float32 {
+	return v[1]
+}
+
+// Z returns the z component of the vector
+func (v Vec) Z() float32 {
+	return v[2]
+}
+
+// W returns the w component of the vector
+func (v Vec) W() float32 {
+	return v[3]
+}
+
+// Normalize normalizes the vector
 func (v Vec) Normalize() Vec {
-	l := 1.0 / v.Len()
-	return Vec{v.X * l, v.Y * l}
+	return v.Scl(1.0 / v.Len())
 }
 
-func (v Vec) Inv() Vec {
-	return Vec{-v.X, -v.Y}
+// Scl multiplies a vector by a scalar value
+func (v Vec) Scl(s float32) Vec {
+	return Vec{v[0] * s, v[1] * s, v[2] * s, v[3] * s}
 }
 
-func (v Vec) Len() float64 {
-	return math.Hypot(v.X, v.Y)
+// Len returns the length of the vector
+func (v Vec) Len() float32 {
+	return float32(math.Sqrt(float64(v[0]*v[0] + v[1]*v[1] + v[2]*v[2] + v[3]*v[3])))
 }
 
-func (v Vec) Eql(v2 Vec) bool {
-	return v.X == v2.X && v.Y == v2.Y
-}
-
+// Add adds two vectors
 func (v Vec) Add(v2 Vec) Vec {
-	return Vec{v.X + v2.X, v.Y + v2.Y}
+	return Vec{v[0] + v2[0], v[1] + v2[1], v[2] + v2[2], v[3] + v2[3]}
 }
 
+// Sub subtracts two vectors
 func (v Vec) Sub(v2 Vec) Vec {
-	return v.Add(v2.Inv())
+	return Vec{v[0] - v2[0], v[1] - v2[1], v[2] - v2[2], v[3] - v2[3]}
 }
 
-func (v Vec) Mul(s float64) Vec {
-	return Vec{v.X * s, v.Y * s}
+// Mul multiplies two vectors
+func (v Vec) Mul(v2 Vec) Vec {
+	return Vec{v[0] * v2[0], v[1] * v2[1], v[2] * v2[2], v[3] * v2[3]}
 }
 
-func (v Vec) Dot(v2 Vec) float64 {
-	return (v.X * v2.X) + (v.Y * v2.Y)
-}
-
-func (v Vec) Rot(angle float64) Vec {
-	sin, cos := math.Sincos(angle)
+// Crs returns the cross product of two vectors
+func (v Vec) Crs(v2 Vec) Vec {
 	return Vec{
-		v.X*cos - v.Y*sin,
-		v.X*sin + v.Y*cos,
+		v[1]*v2[2] - v[2]*v2[1],
+		v[2]*v2[0] - v[0]*v2[2],
+		v[0]*v2[1] - v[1]*v2[0],
 	}
 }
 
-func (v Vec) F64() []float64 {
-	return []float64{v.X, v.Y}
+// Dot returns the dot product of two vectors
+func (v Vec) Dot(v2 Vec) float32 {
+	return v[0]*v2[0] + v[1]*v2[1] + v[2]*v2[2] + v[3]*v2[3]
 }
 
-func (v Vec) F32() []float32 {
-	return []float32{float32(v.X), float32(v.Y)}
+// Rot rotates the vector by the given angle
+func (v Vec) Rot(angle float32) Vec {
+	return v.Mat(Ident().Rot(angle))
 }
 
+// Mat multiples the vector by a matrix
+func (v Vec) Mat(m Mat) Vec {
+	return Vec{
+		v[0]*m[0] + v[1]*m[4] + v[2]*m[8] + v[3]*m[12],
+		v[0]*m[1] + v[1]*m[5] + v[2]*m[9] + v[3]*m[13],
+		v[0]*m[2] + v[1]*m[6] + v[2]*m[10] + v[3]*m[14],
+		v[0]*m[3] + v[1]*m[7] + v[2]*m[11] + v[3]*m[15],
+	}
+}
+
+// Rect represents a rectangle
 type Rect struct {
 	Min, Max Vec
 }
 
-func (r Rect) Width() float64 {
-	return r.Max.X - r.Min.X
+// Width returns the width of the rectangle
+func (r Rect) Width() float32 {
+	return r.Max.X() - r.Min.X()
 }
 
-func (r Rect) Height() float64 {
-	return r.Max.Y - r.Min.Y
+// Height returns the height of the rectangle
+func (r Rect) Height() float32 {
+	return r.Max.Y() - r.Min.Y()
 }
 
+// Size returns a vector with the size of the rectangle in each dimension
 func (r Rect) Size() Vec {
 	return Vec{r.Width(), r.Height()}
 }
 
-func (r Rect) Area() float64 {
+// Area returns the area of the rectangle
+func (r Rect) Area() float32 {
 	return r.Width() * r.Height()
 }
 
+// Norm returns a normalized rectangle
 func (r Rect) Norm() Rect {
 	return Rect{
 		Min: Vec{
-			math.Min(r.Min.X, r.Max.X),
-			math.Min(r.Min.Y, r.Max.Y),
+			float32(math.Min(float64(r.Min.X()), float64(r.Max.X()))),
+			float32(math.Min(float64(r.Min.Y()), float64(r.Max.Y()))),
 		},
 		Max: Vec{
-			math.Max(r.Min.X, r.Max.X),
-			math.Max(r.Min.Y, r.Max.Y),
+			float32(math.Max(float64(r.Min.X()), float64(r.Max.X()))),
+			float32(math.Max(float64(r.Min.Y()), float64(r.Max.Y()))),
 		},
 	}
 }
 
+// Vert returns the four vertices of the rectangle in the order:
+// 1. Bottom left
+// 2. Bottom right
+// 3. Top right
+// 4. Top left
 func (r Rect) Vert() [4]Vec {
 	return [4]Vec{
 		r.Min,
-		{r.Min.X, r.Max.Y},
+		{r.Min.X(), r.Max.Y()},
 		r.Max,
-		{r.Max.X, r.Min.Y},
+		{r.Max.X(), r.Min.Y()},
 	}
 }
 
+// Mat is a 4x4 matrix
+type Mat [16]float32
+
+// Ident returns the identity matrix
+func Ident() Mat {
+	return Mat{
+		1, 0, 0, 0,
+		0, 1, 0, 0,
+		0, 0, 1, 0,
+		0, 0, 0, 1,
+	}
+}
+
+// F returns the matrix as a [16]float32 array (convenience function)
+func (m Mat) F() [16]float32 {
+	return [16]float32(m)
+}
+
+// Add adds two matrices
+func (m Mat) Add(m2 Mat) Mat {
+	return Mat{
+		m[0] + m2[0], m[1] + m2[1], m[2] + m2[2], m[3] + m2[3],
+		m[4] + m2[4], m[5] + m2[5], m[6] + m2[6], m[7] + m2[7],
+		m[8] + m2[8], m[9] + m2[9], m[10] + m2[10], m[11] + m2[11],
+		m[12] + m2[12], m[13] + m2[13], m[14] + m2[14], m[15] + m2[15],
+	}
+}
+
+// Sub subtracts two matrices
+func (m Mat) Sub(m2 Mat) Mat {
+	return m.Add(m2.Scl(-1))
+}
+
+// Scl multiplies a matrix by a scalar
+func (m Mat) Scl(s float32) Mat {
+	return Mat{
+		m[0] * s, m[1] * s, m[2] * s, m[3] * s,
+		m[4] * s, m[5] * s, m[6] * s, m[7] * s,
+		m[8] * s, m[9] * s, m[10] * s, m[11] * s,
+		m[12] * s, m[13] * s, m[14] * s, m[15] * s,
+	}
+}
+
+// Pos transforms a matrix by a position vector
+func (m Mat) Pos(v Vec) Mat {
+	return m.Mul(Mat{
+		1, 0, 0, 0,
+		0, 1, 0, 0,
+		0, 0, 1, 0,
+		v.X(), v.Y(), v.Z(), 1,
+	})
+}
+
+// Det gets the determinant of a 4x4 matrix
+func (m Mat) Det() float32 {
+	return m[0]*m[5]*m[10]*m[15] +
+		m[0]*m[6]*m[9]*m[14] +
+		m[0]*m[7]*m[8]*m[13] +
+		m[1]*m[4]*m[10]*m[15] +
+		m[1]*m[6]*m[8]*m[12] +
+		m[1]*m[7]*m[9]*m[14] +
+		m[2]*m[4]*m[9]*m[15] +
+		m[2]*m[5]*m[8]*m[13] +
+		m[2]*m[7]*m[10]*m[12] +
+		m[3]*m[4]*m[8]*m[14] +
+		m[3]*m[5]*m[9]*m[12] +
+		m[3]*m[6]*m[10]*m[13] -
+		m[0]*m[5]*m[9]*m[15] -
+		m[0]*m[6]*m[10]*m[13] -
+		m[0]*m[7]*m[11]*m[12] -
+		m[1]*m[4]*m[10]*m[14] -
+		m[1]*m[6]*m[11]*m[12] -
+		m[1]*m[7]*m[8]*m[13] -
+		m[2]*m[4]*m[11]*m[14] -
+		m[2]*m[5]*m[8]*m[12] -
+		m[2]*m[7]*m[9]*m[13] -
+		m[3]*m[4]*m[9]*m[14] -
+		m[3]*m[5]*m[10]*m[12] -
+		m[3]*m[6]*m[8]*m[13]
+}
+
+// Mul performs a matrix product
+func (m Mat) Mul(m2 Mat) Mat {
+	return Mat{
+		m[0]*m2[0] + m[4]*m2[1] + m[8]*m2[2] + m[12]*m2[3],
+		m[1]*m2[0] + m[5]*m2[1] + m[9]*m2[2] + m[13]*m2[3],
+		m[2]*m2[0] + m[6]*m2[1] + m[10]*m2[2] + m[14]*m2[3],
+		m[3]*m2[0] + m[7]*m2[1] + m[11]*m2[2] + m[15]*m2[3],
+		m[0]*m2[4] + m[4]*m2[5] + m[8]*m2[6] + m[12]*m2[7],
+		m[1]*m2[4] + m[5]*m2[5] + m[9]*m2[6] + m[13]*m2[7],
+		m[2]*m2[4] + m[6]*m2[5] + m[10]*m2[6] + m[14]*m2[7],
+		m[3]*m2[4] + m[7]*m2[5] + m[11]*m2[6] + m[15]*m2[7],
+		m[0]*m2[8] + m[4]*m2[9] + m[8]*m2[10] + m[12]*m2[11],
+		m[1]*m2[8] + m[5]*m2[9] + m[9]*m2[10] + m[13]*m2[11],
+		m[2]*m2[8] + m[6]*m2[9] + m[10]*m2[10] + m[14]*m2[11],
+		m[3]*m2[8] + m[7]*m2[9] + m[11]*m2[10] + m[15]*m2[11],
+		m[0]*m2[12] + m[4]*m2[13] + m[8]*m2[14] + m[12]*m2[15],
+		m[1]*m2[12] + m[5]*m2[13] + m[9]*m2[14] + m[13]*m2[15],
+		m[2]*m2[12] + m[6]*m2[13] + m[10]*m2[14] + m[14]*m2[15],
+		m[3]*m2[12] + m[7]*m2[13] + m[11]*m2[14] + m[15]*m2[15],
+	}
+}
+
+// Rot rotates a matrix along the z axis
+func (m Mat) Rot(rad float32) Mat {
+	s, c := math.Sincos(float64(rad))
+	sin := float32(s)
+	cos := float32(c)
+
+	return m.Mul(Mat{
+		cos, -sin, 0, 0,
+		sin, cos, 0, 0,
+		0, 0, 1, 0,
+		0, 0, 0, 1,
+	})
+}
+
+// String returns a string representation of the matrix, with each value
+// truncated to 3 decimal places
+func (m Mat) String() string {
+	return fmt.Sprintf("[%.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f]",
+		m[0], m[4], m[8], m[12],
+		m[1], m[5], m[9], m[13],
+		m[2], m[6], m[10], m[14],
+		m[3], m[7], m[11], m[15])
+}
+
+/*
 // Mat is a 2x3 affine matrix that can be used for all kinds of spatial transforms, such
 // as movement, scaling and rotations.
 //
@@ -115,7 +288,7 @@ func (r Rect) Vert() [4]Vec {
 // [0] [2] [4]
 // [1] [3] [5]
 //  0   0   1  (implicit row)
-type Mat [6]float64
+type Mat [6]float32
 
 func Ident() Mat {
 	return Mat{1, 0, 0, 1, 0, 0}
@@ -129,7 +302,7 @@ func (m Mat) Sub(m2 Mat) Mat {
 	return Mat{m[0] - m2[0], m[1] - m2[1], m[2] - m2[2], m[3] - m2[3], m[4] - m2[4], m[5] - m2[5]}
 }
 
-func (m Mat) Mul(s float64) Mat {
+func (m Mat) Mul(s float32) Mat {
 	return Mat{m[0] * s, m[1] * s, m[2] * s, m[3] * s, m[4] * s, m[5] * s}
 }
 
@@ -153,15 +326,18 @@ func (m Mat) Scale(origin Vec, scale Vec) Mat {
 	return m
 }
 
-func (m Mat) ScaleS(around Vec, scale float64) Mat {
-	return m.Scale(around, Vec{scale, scale})
+func (m Mat) ScaleS(around Vec, scale float32) Mat {
+	return m.Scale(around, Vec{scale, scale, scale})
 }
 
-func (m Mat) Rot(around Vec, rad float64) Mat {
+func (m Mat) Rot(around Vec, rad float32) Mat {
 	m[4] -= around.X
 	m[5] -= around.Y
 
-	sin, cos := math.Sincos(rad)
+	s, c := math.Sincos(float64(rad))
+	sin := float32(s)
+	cos := float32(c)
+
 	m = m.Chain(Mat{cos, sin, -sin, cos, 0, 0})
 
 	m[4] += around.X
@@ -190,6 +366,7 @@ func (m Mat) Project(u Vec) Vec {
 	return Vec{
 		m[0]*u.X + m[2]*u.Y + m[4],
 		m[1]*u.X + m[3]*u.Y + m[5],
+		u.Z,
 	}
 }
 
@@ -202,9 +379,11 @@ func (m Mat) Unproject(u Vec) Vec {
 	return Vec{
 		(m[3]*(u.X-m[4]) - m[2]*(u.Y-m[5])) / det,
 		(-m[1]*(u.X-m[4]) + m[0]*(u.Y-m[5])) / det,
+		u.Z,
 	}
 }
 
 func (m Mat) String() string {
 	return fmt.Sprintf("{%v %v %v | %v %v %v}", m[0], m[2], m[4], m[1], m[3], m[5])
 }
+*/
