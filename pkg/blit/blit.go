@@ -2,7 +2,6 @@ package blit
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/octalide/blit/pkg/bgl"
@@ -16,7 +15,6 @@ const (
 )
 
 func Init() error {
-	log.Println("initializing wisp...")
 	wisp.Init()
 
 	if err := bgl.Init(); err != nil {
