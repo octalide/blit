@@ -1,17 +1,63 @@
 package blit
 
-import "github.com/go-gl/glfw/v3.3/glfw"
+import (
+	"github.com/go-gl/glfw/v3.3/glfw"
+	"github.com/octalide/wisp/pkg/wisp"
+)
 
 var (
 	mouse struct {
-		Cursor, Scroll Vec
+		Cursor, Scroll, Delta Vec
 	}
 
-	buttons map[Button]bool
+	buttons map[Key]bool
 )
 
 func init() {
-	buttons = make(map[Button]bool)
+	buttons = make(map[Key]bool)
+
+	// wisp setup
+	wisp.Init()
+	wisp.AddHandler(&wisp.Handler{
+		Callback: func(e *wisp.Event) bool {
+			switch e.Tag {
+			case "core.input.mouse.move":
+				pos := e.Data.(Vec)
+				mouse.Delta = pos.Sub(mouse.Cursor)
+				mouse.Cursor = pos
+			case "core.input.mouse.button.up":
+				buttons[Key(e.Data.(Key))] = false
+			case "core.input.mouse.button.down":
+				buttons[Key(e.Data.(Key))] = true
+			case "core.input.mouse.scroll":
+				mouse.Scroll = e.Data.(Vec)
+			case "core.input.key.up":
+				buttons[Key(e.Data.(Key))] = false
+			case "core.input.key.down":
+				buttons[Key(e.Data.(Key))] = true
+			case "core.input.key.repeat":
+				buttons[Key(e.Data.(Key))] = true
+			}
+
+			return false
+		},
+		Tags:     []string{"core.input"},
+		Blocking: true,
+	})
+}
+
+func Keys(key Key) bool {
+	v, ok := buttons[key]
+	if !ok {
+		buttons[key] = false
+		return false
+	}
+
+	return v
+}
+
+func MouseDelta() Vec {
+	return mouse.Delta
 }
 
 func MousePos() Vec {
@@ -22,148 +68,148 @@ func MouseScroll() Vec {
 	return mouse.Scroll
 }
 
-type Button int
+type Key int
 
 const (
-	MouseButton1      = Button(glfw.MouseButton1)
-	MouseButton2      = Button(glfw.MouseButton2)
-	MouseButton3      = Button(glfw.MouseButton3)
-	MouseButton4      = Button(glfw.MouseButton4)
-	MouseButton5      = Button(glfw.MouseButton5)
-	MouseButton6      = Button(glfw.MouseButton6)
-	MouseButton7      = Button(glfw.MouseButton7)
-	MouseButton8      = Button(glfw.MouseButton8)
-	MouseButtonLast   = Button(glfw.MouseButtonLast)
-	MouseButtonLeft   = Button(glfw.MouseButtonLeft)
-	MouseButtonRight  = Button(glfw.MouseButtonRight)
-	MouseButtonMiddle = Button(glfw.MouseButtonMiddle)
+	MouseButton1      = Key(glfw.MouseButton1)
+	MouseButton2      = Key(glfw.MouseButton2)
+	MouseButton3      = Key(glfw.MouseButton3)
+	MouseButton4      = Key(glfw.MouseButton4)
+	MouseButton5      = Key(glfw.MouseButton5)
+	MouseButton6      = Key(glfw.MouseButton6)
+	MouseButton7      = Key(glfw.MouseButton7)
+	MouseButton8      = Key(glfw.MouseButton8)
+	MouseButtonLast   = Key(glfw.MouseButtonLast)
+	MouseButtonLeft   = Key(glfw.MouseButtonLeft)
+	MouseButtonRight  = Key(glfw.MouseButtonRight)
+	MouseButtonMiddle = Key(glfw.MouseButtonMiddle)
 
-	KeyUnknown      = Button(glfw.KeyUnknown)
-	KeySpace        = Button(glfw.KeySpace)
-	KeyApostrophe   = Button(glfw.KeyApostrophe)
-	KeyComma        = Button(glfw.KeyComma)
-	KeyMinus        = Button(glfw.KeyMinus)
-	KeyPeriod       = Button(glfw.KeyPeriod)
-	KeySlash        = Button(glfw.KeySlash)
-	Key0            = Button(glfw.Key0)
-	Key1            = Button(glfw.Key1)
-	Key2            = Button(glfw.Key2)
-	Key3            = Button(glfw.Key3)
-	Key4            = Button(glfw.Key4)
-	Key5            = Button(glfw.Key5)
-	Key6            = Button(glfw.Key6)
-	Key7            = Button(glfw.Key7)
-	Key8            = Button(glfw.Key8)
-	Key9            = Button(glfw.Key9)
-	KeySemicolon    = Button(glfw.KeySemicolon)
-	KeyEqual        = Button(glfw.KeyEqual)
-	KeyA            = Button(glfw.KeyA)
-	KeyB            = Button(glfw.KeyB)
-	KeyC            = Button(glfw.KeyC)
-	KeyD            = Button(glfw.KeyD)
-	KeyE            = Button(glfw.KeyE)
-	KeyF            = Button(glfw.KeyF)
-	KeyG            = Button(glfw.KeyG)
-	KeyH            = Button(glfw.KeyH)
-	KeyI            = Button(glfw.KeyI)
-	KeyJ            = Button(glfw.KeyJ)
-	KeyK            = Button(glfw.KeyK)
-	KeyL            = Button(glfw.KeyL)
-	KeyM            = Button(glfw.KeyM)
-	KeyN            = Button(glfw.KeyN)
-	KeyO            = Button(glfw.KeyO)
-	KeyP            = Button(glfw.KeyP)
-	KeyQ            = Button(glfw.KeyQ)
-	KeyR            = Button(glfw.KeyR)
-	KeyS            = Button(glfw.KeyS)
-	KeyT            = Button(glfw.KeyT)
-	KeyU            = Button(glfw.KeyU)
-	KeyV            = Button(glfw.KeyV)
-	KeyW            = Button(glfw.KeyW)
-	KeyX            = Button(glfw.KeyX)
-	KeyY            = Button(glfw.KeyY)
-	KeyZ            = Button(glfw.KeyZ)
-	KeyLeftBracket  = Button(glfw.KeyLeftBracket)
-	KeyBackslash    = Button(glfw.KeyBackslash)
-	KeyRightBracket = Button(glfw.KeyRightBracket)
-	KeyGraveAccent  = Button(glfw.KeyGraveAccent)
-	KeyWorld1       = Button(glfw.KeyWorld1)
-	KeyWorld2       = Button(glfw.KeyWorld2)
-	KeyEscape       = Button(glfw.KeyEscape)
-	KeyEnter        = Button(glfw.KeyEnter)
-	KeyTab          = Button(glfw.KeyTab)
-	KeyBackspace    = Button(glfw.KeyBackspace)
-	KeyInsert       = Button(glfw.KeyInsert)
-	KeyDelete       = Button(glfw.KeyDelete)
-	KeyRight        = Button(glfw.KeyRight)
-	KeyLeft         = Button(glfw.KeyLeft)
-	KeyDown         = Button(glfw.KeyDown)
-	KeyUp           = Button(glfw.KeyUp)
-	KeyPageUp       = Button(glfw.KeyPageUp)
-	KeyPageDown     = Button(glfw.KeyPageDown)
-	KeyHome         = Button(glfw.KeyHome)
-	KeyEnd          = Button(glfw.KeyEnd)
-	KeyCapsLock     = Button(glfw.KeyCapsLock)
-	KeyScrollLock   = Button(glfw.KeyScrollLock)
-	KeyNumLock      = Button(glfw.KeyNumLock)
-	KeyPrintScreen  = Button(glfw.KeyPrintScreen)
-	KeyPause        = Button(glfw.KeyPause)
-	KeyF1           = Button(glfw.KeyF1)
-	KeyF2           = Button(glfw.KeyF2)
-	KeyF3           = Button(glfw.KeyF3)
-	KeyF4           = Button(glfw.KeyF4)
-	KeyF5           = Button(glfw.KeyF5)
-	KeyF6           = Button(glfw.KeyF6)
-	KeyF7           = Button(glfw.KeyF7)
-	KeyF8           = Button(glfw.KeyF8)
-	KeyF9           = Button(glfw.KeyF9)
-	KeyF10          = Button(glfw.KeyF10)
-	KeyF11          = Button(glfw.KeyF11)
-	KeyF12          = Button(glfw.KeyF12)
-	KeyF13          = Button(glfw.KeyF13)
-	KeyF14          = Button(glfw.KeyF14)
-	KeyF15          = Button(glfw.KeyF15)
-	KeyF16          = Button(glfw.KeyF16)
-	KeyF17          = Button(glfw.KeyF17)
-	KeyF18          = Button(glfw.KeyF18)
-	KeyF19          = Button(glfw.KeyF19)
-	KeyF20          = Button(glfw.KeyF20)
-	KeyF21          = Button(glfw.KeyF21)
-	KeyF22          = Button(glfw.KeyF22)
-	KeyF23          = Button(glfw.KeyF23)
-	KeyF24          = Button(glfw.KeyF24)
-	KeyF25          = Button(glfw.KeyF25)
-	KeyKP0          = Button(glfw.KeyKP0)
-	KeyKP1          = Button(glfw.KeyKP1)
-	KeyKP2          = Button(glfw.KeyKP2)
-	KeyKP3          = Button(glfw.KeyKP3)
-	KeyKP4          = Button(glfw.KeyKP4)
-	KeyKP5          = Button(glfw.KeyKP5)
-	KeyKP6          = Button(glfw.KeyKP6)
-	KeyKP7          = Button(glfw.KeyKP7)
-	KeyKP8          = Button(glfw.KeyKP8)
-	KeyKP9          = Button(glfw.KeyKP9)
-	KeyKPDecimal    = Button(glfw.KeyKPDecimal)
-	KeyKPDivide     = Button(glfw.KeyKPDivide)
-	KeyKPMultiply   = Button(glfw.KeyKPMultiply)
-	KeyKPSubtract   = Button(glfw.KeyKPSubtract)
-	KeyKPAdd        = Button(glfw.KeyKPAdd)
-	KeyKPEnter      = Button(glfw.KeyKPEnter)
-	KeyKPEqual      = Button(glfw.KeyKPEqual)
-	KeyLeftShift    = Button(glfw.KeyLeftShift)
-	KeyLeftControl  = Button(glfw.KeyLeftControl)
-	KeyLeftAlt      = Button(glfw.KeyLeftAlt)
-	KeyLeftSuper    = Button(glfw.KeyLeftSuper)
-	KeyRightShift   = Button(glfw.KeyRightShift)
-	KeyRightControl = Button(glfw.KeyRightControl)
-	KeyRightAlt     = Button(glfw.KeyRightAlt)
-	KeyRightSuper   = Button(glfw.KeyRightSuper)
-	KeyMenu         = Button(glfw.KeyMenu)
-	KeyLast         = Button(glfw.KeyLast)
+	KeyUnknown      = Key(glfw.KeyUnknown)
+	KeySpace        = Key(glfw.KeySpace)
+	KeyApostrophe   = Key(glfw.KeyApostrophe)
+	KeyComma        = Key(glfw.KeyComma)
+	KeyMinus        = Key(glfw.KeyMinus)
+	KeyPeriod       = Key(glfw.KeyPeriod)
+	KeySlash        = Key(glfw.KeySlash)
+	Key0            = Key(glfw.Key0)
+	Key1            = Key(glfw.Key1)
+	Key2            = Key(glfw.Key2)
+	Key3            = Key(glfw.Key3)
+	Key4            = Key(glfw.Key4)
+	Key5            = Key(glfw.Key5)
+	Key6            = Key(glfw.Key6)
+	Key7            = Key(glfw.Key7)
+	Key8            = Key(glfw.Key8)
+	Key9            = Key(glfw.Key9)
+	KeySemicolon    = Key(glfw.KeySemicolon)
+	KeyEqual        = Key(glfw.KeyEqual)
+	KeyA            = Key(glfw.KeyA)
+	KeyB            = Key(glfw.KeyB)
+	KeyC            = Key(glfw.KeyC)
+	KeyD            = Key(glfw.KeyD)
+	KeyE            = Key(glfw.KeyE)
+	KeyF            = Key(glfw.KeyF)
+	KeyG            = Key(glfw.KeyG)
+	KeyH            = Key(glfw.KeyH)
+	KeyI            = Key(glfw.KeyI)
+	KeyJ            = Key(glfw.KeyJ)
+	KeyK            = Key(glfw.KeyK)
+	KeyL            = Key(glfw.KeyL)
+	KeyM            = Key(glfw.KeyM)
+	KeyN            = Key(glfw.KeyN)
+	KeyO            = Key(glfw.KeyO)
+	KeyP            = Key(glfw.KeyP)
+	KeyQ            = Key(glfw.KeyQ)
+	KeyR            = Key(glfw.KeyR)
+	KeyS            = Key(glfw.KeyS)
+	KeyT            = Key(glfw.KeyT)
+	KeyU            = Key(glfw.KeyU)
+	KeyV            = Key(glfw.KeyV)
+	KeyW            = Key(glfw.KeyW)
+	KeyX            = Key(glfw.KeyX)
+	KeyY            = Key(glfw.KeyY)
+	KeyZ            = Key(glfw.KeyZ)
+	KeyLeftBracket  = Key(glfw.KeyLeftBracket)
+	KeyBackslash    = Key(glfw.KeyBackslash)
+	KeyRightBracket = Key(glfw.KeyRightBracket)
+	KeyGraveAccent  = Key(glfw.KeyGraveAccent)
+	KeyWorld1       = Key(glfw.KeyWorld1)
+	KeyWorld2       = Key(glfw.KeyWorld2)
+	KeyEscape       = Key(glfw.KeyEscape)
+	KeyEnter        = Key(glfw.KeyEnter)
+	KeyTab          = Key(glfw.KeyTab)
+	KeyBackspace    = Key(glfw.KeyBackspace)
+	KeyInsert       = Key(glfw.KeyInsert)
+	KeyDelete       = Key(glfw.KeyDelete)
+	KeyRight        = Key(glfw.KeyRight)
+	KeyLeft         = Key(glfw.KeyLeft)
+	KeyDown         = Key(glfw.KeyDown)
+	KeyUp           = Key(glfw.KeyUp)
+	KeyPageUp       = Key(glfw.KeyPageUp)
+	KeyPageDown     = Key(glfw.KeyPageDown)
+	KeyHome         = Key(glfw.KeyHome)
+	KeyEnd          = Key(glfw.KeyEnd)
+	KeyCapsLock     = Key(glfw.KeyCapsLock)
+	KeyScrollLock   = Key(glfw.KeyScrollLock)
+	KeyNumLock      = Key(glfw.KeyNumLock)
+	KeyPrintScreen  = Key(glfw.KeyPrintScreen)
+	KeyPause        = Key(glfw.KeyPause)
+	KeyF1           = Key(glfw.KeyF1)
+	KeyF2           = Key(glfw.KeyF2)
+	KeyF3           = Key(glfw.KeyF3)
+	KeyF4           = Key(glfw.KeyF4)
+	KeyF5           = Key(glfw.KeyF5)
+	KeyF6           = Key(glfw.KeyF6)
+	KeyF7           = Key(glfw.KeyF7)
+	KeyF8           = Key(glfw.KeyF8)
+	KeyF9           = Key(glfw.KeyF9)
+	KeyF10          = Key(glfw.KeyF10)
+	KeyF11          = Key(glfw.KeyF11)
+	KeyF12          = Key(glfw.KeyF12)
+	KeyF13          = Key(glfw.KeyF13)
+	KeyF14          = Key(glfw.KeyF14)
+	KeyF15          = Key(glfw.KeyF15)
+	KeyF16          = Key(glfw.KeyF16)
+	KeyF17          = Key(glfw.KeyF17)
+	KeyF18          = Key(glfw.KeyF18)
+	KeyF19          = Key(glfw.KeyF19)
+	KeyF20          = Key(glfw.KeyF20)
+	KeyF21          = Key(glfw.KeyF21)
+	KeyF22          = Key(glfw.KeyF22)
+	KeyF23          = Key(glfw.KeyF23)
+	KeyF24          = Key(glfw.KeyF24)
+	KeyF25          = Key(glfw.KeyF25)
+	KeyKP0          = Key(glfw.KeyKP0)
+	KeyKP1          = Key(glfw.KeyKP1)
+	KeyKP2          = Key(glfw.KeyKP2)
+	KeyKP3          = Key(glfw.KeyKP3)
+	KeyKP4          = Key(glfw.KeyKP4)
+	KeyKP5          = Key(glfw.KeyKP5)
+	KeyKP6          = Key(glfw.KeyKP6)
+	KeyKP7          = Key(glfw.KeyKP7)
+	KeyKP8          = Key(glfw.KeyKP8)
+	KeyKP9          = Key(glfw.KeyKP9)
+	KeyKPDecimal    = Key(glfw.KeyKPDecimal)
+	KeyKPDivide     = Key(glfw.KeyKPDivide)
+	KeyKPMultiply   = Key(glfw.KeyKPMultiply)
+	KeyKPSubtract   = Key(glfw.KeyKPSubtract)
+	KeyKPAdd        = Key(glfw.KeyKPAdd)
+	KeyKPEnter      = Key(glfw.KeyKPEnter)
+	KeyKPEqual      = Key(glfw.KeyKPEqual)
+	KeyLeftShift    = Key(glfw.KeyLeftShift)
+	KeyLeftControl  = Key(glfw.KeyLeftControl)
+	KeyLeftAlt      = Key(glfw.KeyLeftAlt)
+	KeyLeftSuper    = Key(glfw.KeyLeftSuper)
+	KeyRightShift   = Key(glfw.KeyRightShift)
+	KeyRightControl = Key(glfw.KeyRightControl)
+	KeyRightAlt     = Key(glfw.KeyRightAlt)
+	KeyRightSuper   = Key(glfw.KeyRightSuper)
+	KeyMenu         = Key(glfw.KeyMenu)
+	KeyLast         = Key(glfw.KeyLast)
 )
 
 // String returns a human-readable string describing the Button.
-func (b Button) String() string {
+func (b Key) String() string {
 	name, ok := buttonNames[b]
 	if !ok {
 		return "Invalid"
@@ -171,7 +217,7 @@ func (b Button) String() string {
 	return name
 }
 
-var buttonNames = map[Button]string{
+var buttonNames = map[Key]string{
 	MouseButton4:      "MouseButton4",
 	MouseButton5:      "MouseButton5",
 	MouseButton6:      "MouseButton6",

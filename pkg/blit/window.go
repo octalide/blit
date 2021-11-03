@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/octalide/blit/pkg/bgl"
+	"github.com/octalide/wisp/pkg/wisp"
 )
 
 type WindowOptions struct {
@@ -157,6 +158,7 @@ func (w *Window) SetFullscreen(fullscreen bool) {
 	}
 
 	w.win.SetMonitor(mon, x, y, w.options.Width, w.options.Height, mode.RefreshRate)
+	bgl.SetBounds(0, 0, w.options.Width, w.options.Height)
 }
 
 func (w *Window) GetMSAA() bool {
@@ -258,35 +260,72 @@ func (w *Window) SetSize(width, height int) {
 	w.win.SetSize(width, height)
 }
 
+var (
+	eventResize          = wisp.NewEvent("core.window.resize", nil)
+	eventFocus           = wisp.NewEvent("core.window.focus", nil)
+	eventChar            = wisp.NewEvent("core.input.char", nil)
+	eventKeyDown         = wisp.NewEvent("core.input.key.down", nil)
+	eventKeyUp           = wisp.NewEvent("core.input.key.up", nil)
+	eventKeyRepeat       = wisp.NewEvent("core.input.key.repeat", nil)
+	eventMouseButtonDown = wisp.NewEvent("core.input.mouse.button.down", nil)
+	eventMouseButtonUp   = wisp.NewEvent("core.input.mouse.button.up", nil)
+	eventMouseMove       = wisp.NewEvent("core.input.mouse.move", nil)
+	eventMouseScroll     = wisp.NewEvent("core.input.mouse.scroll", nil)
+)
+
 func (w *Window) onResize(_ *glfw.Window, width, height int) {
 	w.options.Width = width
 	w.options.Height = height
 
 	bgl.SetBounds(0, 0, w.options.Width, w.options.Height)
-}
 
-func (w *Window) onKey(_ *glfw.Window, key glfw.Key, scancode int, action glfw.Action, mods glfw.ModifierKey) {
-
+	eventResize.Data = Vec{float32(width), float32(height)}
+	wisp.Broadcast(eventResize)
 }
 
 func (w *Window) onFocus(_ *glfw.Window, focused bool) {
 	w.focused = focused
+
+	eventFocus.Data = focused
+	wisp.Broadcast(eventFocus)
 }
 
 func (w *Window) onChar(_ *glfw.Window, char rune) {
+	eventChar.Data = char
+	wisp.Broadcast(eventChar)
+}
 
+func (w *Window) onKey(_ *glfw.Window, key glfw.Key, scancode int, action glfw.Action, mods glfw.ModifierKey) {
+	if action == glfw.Press {
+		eventKeyDown.Data = Key(key)
+		wisp.Broadcast(eventKeyDown)
+	} else if action == glfw.Release {
+		eventKeyUp.Data = Key(key)
+		wisp.Broadcast(eventKeyUp)
+	} else if action == glfw.Repeat {
+		eventKeyRepeat.Data = Key(key)
+		wisp.Broadcast(eventKeyRepeat)
+	}
 }
 
 func (w *Window) onMouseButton(_ *glfw.Window, button glfw.MouseButton, action glfw.Action, mods glfw.ModifierKey) {
-
+	if action == glfw.Press {
+		eventMouseButtonDown.Data = Key(button)
+		wisp.Broadcast(eventMouseButtonDown)
+	} else if action == glfw.Release {
+		eventMouseButtonUp.Data = Key(button)
+		wisp.Broadcast(eventMouseButtonUp)
+	}
 }
 
 func (w *Window) onScroll(_ *glfw.Window, xoff float64, yoff float64) {
-
+	eventMouseScroll.Data = Vec{float32(xoff), float32(yoff)}
+	wisp.Broadcast(eventMouseScroll)
 }
 
 func (w *Window) onCursorMove(_ *glfw.Window, xpos float64, ypos float64) {
-
+	eventMouseMove.Data = Vec{float32(xpos), float32(ypos)}
+	wisp.Broadcast(eventMouseMove)
 }
 
 func glfwBool(b bool) int {

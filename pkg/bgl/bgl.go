@@ -52,6 +52,19 @@ func SetBounds(x, y, w, h int) {
 	gl.Scissor(int32(x), int32(y), int32(w), int32(h))
 }
 
+// Viewport returns the viewport
+func Viewport() [4]float32 {
+	var vp [4]float32
+	gl.GetFloatv(gl.VIEWPORT, &vp[0])
+	return vp
+}
+
+// Aspect returns the aspect ratio of the current viewport.
+func Aspect() float32 {
+	vp := Viewport()
+	return vp[2] / vp[3]
+}
+
 func Clear() {
 	gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 }

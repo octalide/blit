@@ -1,17 +1,18 @@
 package blit
 
 type Orienter struct {
-	Parent     *Orienter
-	X, Y, Z, R float32
+	Parent *Orienter
+	Vec
+	R float32
 }
 
 // Pos gets the position vector relative to the parent
 func (o *Orienter) Pos() Vec {
 	if o.Parent != nil {
-		return o.Parent.Pos().Add(Vec{o.X, o.Y, o.Z})
+		return o.Parent.Pos().Add(o.Vec)
 	}
 
-	return Vec{o.X, o.Y, o.Z}
+	return o.Vec
 }
 
 // Rot gets the rotation relative to the parent

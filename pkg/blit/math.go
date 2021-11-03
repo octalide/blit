@@ -33,8 +33,8 @@ func (v Vec) W() float32 {
 	return v[3]
 }
 
-// Normalize normalizes the vector
-func (v Vec) Normalize() Vec {
+// Nrm normalizes the vector
+func (v Vec) Nrm() Vec {
 	return v.Scl(1.0 / v.Len())
 }
 
@@ -92,57 +92,58 @@ func (v Vec) Mat(m Mat) Vec {
 	}
 }
 
+// Inv returns the inverse of the vector
+func (v Vec) Inv() Vec {
+	return v.Scl(-1)
+}
+
+// String returns a string representation of the vector, with each value
+// truncated to 3 decimal places
+func (v Vec) String() string {
+	return fmt.Sprintf("[%+.3f, %+.3f, %+.3f, %+.3f]", v[0], v[1], v[2], v[3])
+}
+
 // Rect represents a rectangle
-type Rect struct {
-	Min, Max Vec
+type Rect [4]float32
+
+// X returns the x component of the rectangle
+func (r Rect) X() float32 {
+	return r[0]
 }
 
-// Width returns the width of the rectangle
-func (r Rect) Width() float32 {
-	return r.Max.X() - r.Min.X()
+// Y returns the y component of the rectangle
+func (r Rect) Y() float32 {
+	return r[1]
 }
 
-// Height returns the height of the rectangle
-func (r Rect) Height() float32 {
-	return r.Max.Y() - r.Min.Y()
+// W returns the w component of the rectangle
+func (r Rect) W() float32 {
+	return r[2]
+}
+
+// H returns the h component of the rectangle
+func (r Rect) H() float32 {
+	return r[3]
+}
+
+// Min returns the minimum vector of the rectangle
+func (r Rect) Min() Vec {
+	return Vec{r.X(), r.Y()}
+}
+
+// Max returns the maximum vector of the rectangle
+func (r Rect) Max() Vec {
+	return r.Min().Add(Vec{r.W(), r.H()})
 }
 
 // Size returns a vector with the size of the rectangle in each dimension
 func (r Rect) Size() Vec {
-	return Vec{r.Width(), r.Height()}
+	return Vec{r.W(), r.H()}
 }
 
 // Area returns the area of the rectangle
 func (r Rect) Area() float32 {
-	return r.Width() * r.Height()
-}
-
-// Norm returns a normalized rectangle
-func (r Rect) Norm() Rect {
-	return Rect{
-		Min: Vec{
-			float32(math.Min(float64(r.Min.X()), float64(r.Max.X()))),
-			float32(math.Min(float64(r.Min.Y()), float64(r.Max.Y()))),
-		},
-		Max: Vec{
-			float32(math.Max(float64(r.Min.X()), float64(r.Max.X()))),
-			float32(math.Max(float64(r.Min.Y()), float64(r.Max.Y()))),
-		},
-	}
-}
-
-// Vert returns the four vertices of the rectangle in the order:
-// 1. Bottom left
-// 2. Bottom right
-// 3. Top right
-// 4. Top left
-func (r Rect) Vert() [4]Vec {
-	return [4]Vec{
-		r.Min,
-		{r.Min.X(), r.Max.Y()},
-		r.Max,
-		{r.Max.X(), r.Min.Y()},
-	}
+	return r.W() * r.H()
 }
 
 // Mat is a 4x4 matrix
@@ -262,10 +263,37 @@ func (m Mat) Rot(rad float32) Mat {
 	})
 }
 
+// Inv inverts the matrix
+func (m Mat) Inv() Mat {
+	d := m.Det()
+	if d == 0 {
+		return m
+	}
+
+	return Mat{
+		m[5]*m[10]*m[15] + m[6]*m[11]*m[13] + m[7]*m[9]*m[14] - m[5]*m[11]*m[14] - m[6]*m[9]*m[15] - m[7]*m[10]*m[13],
+		m[1]*m[11]*m[14] + m[2]*m[9]*m[15] + m[3]*m[10]*m[13] - m[1]*m[10]*m[15] - m[2]*m[11]*m[13] - m[3]*m[9]*m[14],
+		m[1]*m[6]*m[15] + m[2]*m[7]*m[13] + m[3]*m[5]*m[14] - m[1]*m[7]*m[14] - m[2]*m[5]*m[15] - m[3]*m[6]*m[13],
+		m[1]*m[7]*m[10] + m[2]*m[5]*m[11] + m[3]*m[6]*m[9] - m[1]*m[6]*m[11] - m[2]*m[7]*m[9] - m[3]*m[5]*m[10],
+		m[4]*m[11]*m[14] + m[6]*m[8]*m[15] + m[7]*m[10]*m[12] - m[4]*m[10]*m[15] - m[6]*m[11]*m[12] - m[7]*m[8]*m[14],
+		m[0]*m[10]*m[15] + m[2]*m[11]*m[12] + m[3]*m[8]*m[14] - m[0]*m[11]*m[14] - m[2]*m[8]*m[15] - m[3]*m[10]*m[12],
+		m[0]*m[7]*m[14] + m[2]*m[4]*m[15] + m[3]*m[6]*m[12] - m[0]*m[6]*m[15] - m[2]*m[7]*m[12] - m[3]*m[4]*m[14],
+		m[0]*m[6]*m[11] + m[2]*m[7]*m[8] + m[3]*m[4]*m[10] - m[0]*m[7]*m[10] - m[2]*m[4]*m[11] - m[3]*m[6]*m[8],
+		m[4]*m[9]*m[15] + m[5]*m[11]*m[12] + m[7]*m[8]*m[13] - m[4]*m[11]*m[13] - m[5]*m[8]*m[15] - m[7]*m[9]*m[12],
+		m[0]*m[11]*m[13] + m[1]*m[8]*m[15] + m[3]*m[9]*m[12] - m[0]*m[9]*m[15] - m[1]*m[11]*m[12] - m[3]*m[8]*m[13],
+		m[0]*m[5]*m[15] + m[1]*m[7]*m[12] + m[3]*m[4]*m[13] - m[0]*m[7]*m[13] - m[1]*m[4]*m[15] - m[3]*m[5]*m[12],
+		m[0]*m[7]*m[9] + m[1]*m[4]*m[11] + m[3]*m[5]*m[8] - m[0]*m[5]*m[11] - m[1]*m[7]*m[8] - m[3]*m[4]*m[9],
+		m[4]*m[10]*m[13] + m[5]*m[8]*m[14] + m[6]*m[9]*m[12] - m[4]*m[9]*m[14] - m[5]*m[10]*m[12] - m[6]*m[8]*m[13],
+		m[0]*m[9]*m[14] + m[1]*m[10]*m[12] + m[2]*m[8]*m[13] - m[0]*m[10]*m[13] - m[1]*m[8]*m[14] - m[2]*m[9]*m[12],
+		m[0]*m[6]*m[13] + m[1]*m[4]*m[14] + m[2]*m[5]*m[12] - m[0]*m[4]*m[14] - m[1]*m[6]*m[12] - m[2]*m[5]*m[13],
+		m[0]*m[4]*m[10] + m[1]*m[5]*m[8] + m[2]*m[6]*m[9] - m[0]*m[5]*m[9] - m[1]*m[6]*m[8] - m[2]*m[4]*m[10],
+	}
+}
+
 // String returns a string representation of the matrix, with each value
 // truncated to 3 decimal places
 func (m Mat) String() string {
-	return fmt.Sprintf("[%.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f]",
+	return fmt.Sprintf("[%+.3f, %+.3f, %+.3f, %+.3f, %+.3f, %+.3f, %+.3f, %+.3f, %+.3f, %+.3f, %+.3f, %+.3f, %+.3f, %+.3f, %+.3f, %+.3f]",
 		m[0], m[4], m[8], m[12],
 		m[1], m[5], m[9], m[13],
 		m[2], m[6], m[10], m[14],

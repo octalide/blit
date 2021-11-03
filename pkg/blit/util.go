@@ -1,6 +1,8 @@
 package blit
 
-import "math"
+import (
+	"math"
+)
 
 // Ortho creates an orthographic projection matrix
 func Ortho(left, right, bottom, top, near, far float32) Mat {
@@ -12,13 +14,8 @@ func Ortho(left, right, bottom, top, near, far float32) Mat {
 	}
 }
 
-// Proj creates a projection matrix with a zoom factor
-func Proj(zoom float32) Mat {
-	return Ortho(-zoom, zoom, -zoom, zoom, -1, 1)
-}
-
-// View creates a view matrix
-func View(fov, aspect, near, far float32) Mat {
+// Perspective creates a perspective matrix
+func Perspective(fov, aspect, near, far float32) Mat {
 	f := 1 / float32(math.Tan(float64(fov/2)))
 
 	return Mat{
@@ -31,8 +28,8 @@ func View(fov, aspect, near, far float32) Mat {
 
 // LookAt creates a transform matrix from world space to eye space
 func LookAt(eye, center, up Vec) Mat {
-	z := (eye.Sub(center)).Normalize()
-	x := up.Crs(z).Normalize()
+	z := (eye.Sub(center)).Nrm()
+	x := up.Crs(z).Nrm()
 	y := z.Crs(x)
 
 	return Mat{

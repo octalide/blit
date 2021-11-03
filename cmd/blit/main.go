@@ -9,6 +9,7 @@ import (
 
 	"github.com/octalide/blit/pkg/bgl"
 	"github.com/octalide/blit/pkg/blit"
+	"github.com/octalide/wisp/pkg/wisp"
 )
 
 func main() {
@@ -64,13 +65,64 @@ func main() {
 		panic(err)
 	}
 
+	var minFOV, maxFOV, zoomFactor float32
+	minFOV = 170
+	maxFOV = 179.5
+	zoomFactor = 0.4
+
 	cam := blit.NewCam()
+	cam.FOV = minFOV + (maxFOV-minFOV)/2
+	cam.Viewport = blit.Viewport()
+
+	// camera controller
+	wisp.AddHandler(&wisp.Handler{
+		Callback: func(e *wisp.Event) bool {
+			switch e.Tag {
+			case "core.input.mouse.scroll":
+				delta := e.Data.(blit.Vec).Y()
+				cam.FOV -= delta * zoomFactor
+				if cam.FOV < minFOV {
+					cam.FOV = minFOV
+				}
+				if cam.FOV > maxFOV {
+					cam.FOV = maxFOV
+				}
+			case "core.input.mouse.move":
+				// change camera position by mouse delta if middle mouse button is down
+				delta := blit.MouseDelta()
+				// invert Y axis
+				delta[1] *= -1
+
+				// change delta to world coordinates
+				// delta = cam.Unproject(delta)
+				pan := delta.Scl(0.01 * (cam.FOV - minFOV))
+
+				if blit.Keys(blit.MouseButtonMiddle) {
+					cam.Pan(pan.Inv())
+				}
+
+				fmt.Printf("%v : %v %v %v\r", cam.FOV, cam.Vec, delta, pan)
+			}
+			// log.Printf("event (%v): %v", e.Tag, e.Data)
+			return false
+		},
+		Tags:     []string{"*"},
+		Blocking: false,
+	})
 
 	log.Println("entering main loop...")
 
 	lastPrint := time.Now()
 	last := time.Now()
 	for !win.ShouldClose() {
+		delta := time.Since(last)
+		last = time.Now()
+
+		dirt.O.R += float32(0.2 * delta.Seconds())
+		grass.O.Vec[0] += float32(0.2 * delta.Seconds())
+		stone.O.Vec[1] -= float32(0.2 * delta.Seconds())
+		// fmt.Printf("%.3f : %v\r", dirt.O.R, dirt.O.Mat())
+
 		cam.Use(shader)
 
 		bgl.Clear()
@@ -79,19 +131,6 @@ func main() {
 		stone.Draw()
 
 		blit.Update()
-
-		// print fps calculated from last frame
-		delta := time.Since(last)
-		last = time.Now()
-
-		// rotate modl by 0.1 radians per second according to delta
-		dirt.O.R += float32(0.2 * delta.Seconds())
-		grass.O.X += float32(0.2 * delta.Seconds())
-		stone.O.Y -= float32(0.2 * delta.Seconds())
-		// fmt.Printf("%.3f : %v\r", dirt.O.R, dirt.O.Mat())
-
-		// print mouse position
-		fmt.Printf("%v\r", blit.MousePos())
 
 		if time.Since(lastPrint) > time.Second {
 			// fmt.Printf("fps: %v\r", float64(1/delta.Seconds()))
