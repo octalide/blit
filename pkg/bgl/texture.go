@@ -143,7 +143,7 @@ func (t *Texture) Unbind() {
 // UV returns the uv coordinates of the Texture (utility function)
 func (t *Texture) UV(x, y float32) [2]float32 {
 	return [2]float32{
-		float32(x) / float32(t.width),
-		float32(y) / float32(t.height),
+		x / float32(t.width),
+		y / float32(t.height),
 	}
 }

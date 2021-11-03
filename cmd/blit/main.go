@@ -38,7 +38,7 @@ func main() {
 
 	// load spritesheet
 	log.Println("loading spritesheet...")
-	ss, err := blit.LoadSpritesheet("tiles/ground")
+	ss, err := blit.LoadSpritesheet("tiles/ground.png", "tiles/ground.json")
 	if err != nil {
 		panic(err)
 	}

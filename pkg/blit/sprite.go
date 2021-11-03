@@ -30,23 +30,17 @@ type Sprite struct {
 	Mask    color.RGBA // Color mask
 	Visible bool       // Visibility
 
-	// texture data
-	X float32 // texture X position
-	Y float32 // texture Y position
-	W float32 // Width
-	H float32 // Height
+	// texture rectangle
+	Rect
 
 	dirty bool
 }
 
-func NewSprite(shader *bgl.Program, texture *bgl.Texture, x, y, w, h float32) (*Sprite, error) {
+func NewSprite(shader *bgl.Program, texture *bgl.Texture, rect Rect) (*Sprite, error) {
 	s := &Sprite{
 		shader:  shader,
 		tex:     texture,
-		X:       x,
-		Y:       y,
-		W:       w,
-		H:       h,
+		Rect:    rect,
 		O:       &Orienter{},
 		Visible: true,
 	}
@@ -73,28 +67,28 @@ func (s *Sprite) quad() []float32 {
 
 	uv := s.tex.UV
 	// TL
-	q[2] = uv(s.X, s.Y)[0]
-	q[3] = uv(s.X, s.Y)[1]
+	q[2] = uv(s.X(), s.Y())[0]
+	q[3] = uv(s.X(), s.Y())[1]
 
 	// BL
-	q[6] = uv(s.X, s.Y+s.H)[0]
-	q[7] = uv(s.X, s.Y+s.H)[1]
+	q[6] = uv(s.X(), s.Y()+s.H())[0]
+	q[7] = uv(s.X(), s.Y()+s.H())[1]
 
 	// BR
-	q[10] = uv(s.X+s.W, s.Y+s.H)[0]
-	q[11] = uv(s.X+s.W, s.Y+s.H)[1]
+	q[10] = uv(s.X()+s.W(), s.Y()+s.H())[0]
+	q[11] = uv(s.X()+s.W(), s.Y()+s.H())[1]
 
 	// TR
-	q[14] = uv(s.X+s.W, s.Y)[0]
-	q[15] = uv(s.X+s.W, s.Y)[1]
+	q[14] = uv(s.X()+s.W(), s.Y())[0]
+	q[15] = uv(s.X()+s.W(), s.Y())[1]
 
 	// TL
-	q[18] = uv(s.X, s.Y)[0]
-	q[19] = uv(s.X, s.Y)[1]
+	q[18] = uv(s.X(), s.Y())[0]
+	q[19] = uv(s.X(), s.Y())[1]
 
 	// BR
-	q[22] = uv(s.X+s.W, s.Y+s.H)[0]
-	q[23] = uv(s.X+s.W, s.Y+s.H)[1]
+	q[22] = uv(s.X()+s.W(), s.Y()+s.H())[0]
+	q[23] = uv(s.X()+s.W(), s.Y()+s.H())[1]
 
 	return q
 }
