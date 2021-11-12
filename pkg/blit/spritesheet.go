@@ -93,7 +93,7 @@ func LoadSpritesheet(imgPath, descPath string) (*Spritesheet, error) {
 	rgba := image.NewRGBA(img.Bounds())
 	draw.Draw(rgba, rgba.Bounds(), img, image.Point{0, 0}, draw.Src)
 
-	return GenSpritesheet(img.(*image.RGBA), descMap)
+	return GenSpritesheet(rgba, descMap)
 }
 
 func (ss *Spritesheet) Get(name string, shader *bgl.Program) (*Sprite, error) {
