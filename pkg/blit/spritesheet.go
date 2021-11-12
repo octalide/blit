@@ -89,6 +89,10 @@ func LoadSpritesheet(imgPath, descPath string) (*Spritesheet, error) {
 		return nil, err
 	}
 
+	// convert to RGBA
+	rgba := image.NewRGBA(img.Bounds())
+	draw.Draw(rgba, rgba.Bounds(), img, image.Point{0, 0}, draw.Src)
+
 	return GenSpritesheet(img.(*image.RGBA), descMap)
 }
 
