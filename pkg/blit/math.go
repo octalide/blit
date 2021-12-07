@@ -38,6 +38,11 @@ func (v Vec) Nrm() Vec {
 	return v.Scl(1.0 / v.Len())
 }
 
+// Ref reflects the vector based on a normal
+func (v Vec) Ref(n Vec) Vec {
+	return v.Sub(n.Scl(2 * v.Dot(n)))
+}
+
 // Scl multiplies a vector by a scalar value
 func (v Vec) Scl(s float32) Vec {
 	return Vec{v[0] * s, v[1] * s, v[2] * s, v[3] * s}
