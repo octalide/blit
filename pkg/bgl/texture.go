@@ -83,7 +83,7 @@ func (t *Texture) Height() int {
 
 // SetPixels sets the content of a sub-region of the Texture
 func (t *Texture) SetPixels(x, y, w, h int, pix []uint32) {
-	if len(pix) != w*h*4 {
+	if len(pix) != w*h {
 		panic("set pixels: wrong number of pixels")
 	}
 
