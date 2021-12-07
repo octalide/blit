@@ -82,8 +82,8 @@ func (t *Texture) Height() int {
 }
 
 // SetPixels sets the content of a sub-region of the Texture
-func (t *Texture) SetPixels(x, y, w, h int, img *image.RGBA) {
-	if len(img.Pix) != w*h*4 {
+func (t *Texture) SetPixels(x, y, w, h int, pix []uint32) {
+	if len(pix) != w*h*4 {
 		panic("set pixels: wrong number of pixels")
 	}
 
@@ -96,7 +96,7 @@ func (t *Texture) SetPixels(x, y, w, h int, img *image.RGBA) {
 		int32(h),
 		gl.RGBA,
 		gl.UNSIGNED_BYTE,
-		gl.Ptr(img.Pix),
+		gl.Ptr(pix),
 	)
 }
 
