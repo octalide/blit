@@ -48,6 +48,11 @@ func (v Vec) Scl(s float32) Vec {
 	return Vec{v[0] * s, v[1] * s, v[2] * s, v[3] * s}
 }
 
+// Div divides a vector by a scalar value
+func (v Vec) Div(s float32) Vec {
+	return Vec{v[0] / s, v[1] / s, v[2] / s, v[3] / s}
+}
+
 // Len returns the length of the vector
 func (v Vec) Len() float32 {
 	return float32(math.Sqrt(float64(v[0]*v[0] + v[1]*v[1] + v[2]*v[2] + v[3]*v[3])))
