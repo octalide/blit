@@ -95,7 +95,7 @@ func (t *Texture) SetPixels(x, y, w, h int, pix []uint32) {
 		int32(w),
 		int32(h),
 		gl.RGBA,
-		gl.UNSIGNED_BYTE,
+		gl.UNSIGNED_INT,
 		gl.Ptr(pix),
 	)
 }
