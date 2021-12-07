@@ -22,13 +22,14 @@ type Sprite struct {
 	O *Orienter
 
 	shader *bgl.Program
-	tex    *bgl.Texture
 
 	vao *bgl.VAO
 	vbo *bgl.VBO
 
 	Mask    color.RGBA // Color mask
 	Visible bool       // Visibility
+
+	Tex *bgl.Texture
 
 	// texture rectangle
 	Rect
@@ -39,7 +40,7 @@ type Sprite struct {
 func NewSprite(shader *bgl.Program, texture *bgl.Texture, rect Rect) (*Sprite, error) {
 	s := &Sprite{
 		shader:  shader,
-		tex:     texture,
+		Tex:     texture,
 		Rect:    rect,
 		O:       &Orienter{},
 		Visible: true,
@@ -65,7 +66,7 @@ func (s *Sprite) Mat() Mat {
 func (s *Sprite) quad() []float32 {
 	q := quadDefault
 
-	uv := s.tex.UV
+	uv := s.Tex.UV
 	// TL
 	q[2] = uv(s.X(), s.Y())[0]
 	q[3] = uv(s.X(), s.Y())[1]
@@ -109,13 +110,13 @@ func (s *Sprite) Draw() {
 		s.shader.SetUniform("color", s.mask())
 		s.shader.SetUniform("modl", s.Mat().F())
 
-		s.tex.Bind()
+		s.Tex.Bind()
 		s.vao.Bind()
 		s.vbo.Bind()
 		s.vbo.Draw()
 		s.vbo.Unbind()
 		s.vao.Unbind()
-		s.tex.Unbind()
+		s.Tex.Unbind()
 		s.shader.Unbind()
 	}
 }
