@@ -51,10 +51,10 @@ func NewTexture(img *image.RGBA, filter Filter) *Texture {
 	)
 
 	/*
-		borderColor := mgl32.Vec4{0, 0, 0, 0}
-		gl.TexParameterfv(gl.TEXTURE_2D, gl.TEXTURE_BORDER_COLOR, &borderColor[0])
-		gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
-		gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
+	   borderColor := mgl32.Vec4{0, 0, 0, 0}
+	   gl.TexParameterfv(gl.TEXTURE_2D, gl.TEXTURE_BORDER_COLOR, &borderColor[0])
+	   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_BORDER)
+	   gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_BORDER)
 	*/
 
 	tex.SetFilter(filter)
