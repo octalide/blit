@@ -1,0 +1,284 @@
+# blit.draw: the draw list — a growable buffer of colored, textured triangle vertices.
+#
+# widgets accumulate vertices here; each frame the consumer uploads data()/count()
+# to a dynamic vertex buffer and renders them as GL_TRIANGLES. positions are in
+# pixel space, u/v index the font atlas in [0, 1], and rgba is straight (not
+# premultiplied) with each channel in [0, 1].
+
+use std.types.size.usize;
+use std.types.string.str;
+use std.types.option.Option;
+use std.types.option.some;
+use std.types.option.none;
+use std.types.result.Result;
+use std.types.result.is_err;
+use std.types.result.unwrap_ok;
+
+use allo: std.allocator;
+use page: std.allocator.page;
+
+# INIT_CAP: vertex capacity allocated by init before any growth.
+pub val INIT_CAP: usize = 1024;
+
+# Color: straight (non-premultiplied) rgba, each channel in [0, 1].
+# ---
+# r: red channel
+# g: green channel
+# b: blue channel
+# a: alpha channel
+pub rec Color {
+    r: f32;
+    g: f32;
+    b: f32;
+    a: f32;
+}
+
+# rgba: construct a Color from four channel values.
+# ---
+# r:   red channel in [0, 1]
+# g:   green channel in [0, 1]
+# b:   blue channel in [0, 1]
+# a:   alpha channel in [0, 1]
+# ret: the color
+pub fun rgba(r: f32, g: f32, b: f32, a: f32) Color {
+    var c: Color;
+    c.r = r;
+    c.g = g;
+    c.b = b;
+    c.a = a;
+    ret c;
+}
+
+# Vert: a single vertex: pixel-space position, atlas uv, and color.
+# ---
+# x: pixel-space x
+# y: pixel-space y
+# u: atlas u in [0, 1]
+# v: atlas v in [0, 1]
+# r: red channel
+# g: green channel
+# b: blue channel
+# a: alpha channel
+pub rec Vert {
+    x: f32;
+    y: f32;
+    u: f32;
+    v: f32;
+    r: f32;
+    g: f32;
+    b: f32;
+    a: f32;
+}
+
+# DrawList: a growable vertex buffer accumulated over one frame.
+# ---
+# verts: backing buffer (nil before init)
+# cap:   capacity in vertices
+# len:   vertices currently used
+# a:     allocator backing the buffer
+pub rec DrawList {
+    verts: *Vert;
+    cap:   usize;
+    len:   usize;
+    a:     *allo.Allocator;
+}
+
+# init: allocate a draw list's initial backing buffer.
+# ---
+# dl:  draw list to initialize
+# a:   allocator to back the buffer
+# ret: none on success, some(message) on allocation failure
+pub fun init(dl: *DrawList, a: *allo.Allocator) Option[str] {
+    dl.a     = a;
+    dl.len   = 0;
+    dl.cap   = 0;
+    dl.verts = nil;
+
+    val r: Result[*Vert, str] = allo.allocate[Vert](a, INIT_CAP);
+    if (is_err[*Vert, str](r)) { ret some[str]("draw: vertex buffer alloc failed"); }
+    dl.verts = unwrap_ok[*Vert, str](r);
+    dl.cap   = INIT_CAP;
+    ret none[str]();
+}
+
+# free: release the backing buffer and reset the draw list to empty.
+# ---
+# dl: draw list to free
+pub fun free(dl: *DrawList) {
+    if (dl == nil) { ret; }
+    allo.deallocate[Vert](dl.a, dl.verts, dl.cap);
+    dl.verts = nil;
+    dl.cap   = 0;
+    dl.len   = 0;
+}
+
+# reset: clear the draw list for a new frame, keeping allocated capacity.
+# ---
+# dl: draw list to reset
+pub fun reset(dl: *DrawList) {
+    if (dl == nil) { ret; }
+    dl.len = 0;
+}
+
+# count: number of vertices currently in the draw list.
+# ---
+# dl:  draw list to query
+# ret: vertex count
+pub fun count(dl: *DrawList) usize {
+    ret dl.len;
+}
+
+# data: pointer to the first vertex, for upload (nil if never grown).
+# ---
+# dl:  draw list to query
+# ret: pointer to the vertex buffer
+pub fun data(dl: *DrawList) *Vert {
+    ret dl.verts;
+}
+
+# grow: ensure room for at least one more vertex, doubling capacity when full.
+# ---
+# dl:  draw list to grow
+# ret: none on success, some(message) on allocation failure
+fun grow(dl: *DrawList) Option[str] {
+    if (dl.len < dl.cap) { ret none[str](); }
+
+    var new_cap: usize = dl.cap * 2;
+    if (new_cap == 0) { new_cap = INIT_CAP; }
+
+    val r: Result[*Vert, str] = allo.reallocate[Vert](dl.a, dl.verts, dl.cap, new_cap);
+    if (is_err[*Vert, str](r)) { ret some[str]("draw: vertex buffer grow failed"); }
+    dl.verts = unwrap_ok[*Vert, str](r);
+    dl.cap   = new_cap;
+    ret none[str]();
+}
+
+# push_vert: append one vertex, growing the buffer if full.
+# ---
+# dl:  draw list to append to
+# v:   vertex to append
+# ret: none on success, some(message) on allocation failure
+pub fun push_vert(dl: *DrawList, v: Vert) Option[str] {
+    val g: Option[str] = grow(dl);
+    if (g.has_value) { ret g; }
+    dl.verts[dl.len] = v;
+    dl.len = dl.len + 1;
+    ret none[str]();
+}
+
+# push_quad: append an axis-aligned quad as two triangles (6 vertices).
+#
+# (x0, y0) is the top-left corner and (x1, y1) the bottom-right, with (u0, v0)
+# and (u1, v1) the matching atlas corners. all six vertices share color c.
+# ---
+# dl:  draw list to append to
+# x0:  left x in pixels
+# y0:  top y in pixels
+# x1:  right x in pixels
+# y1:  bottom y in pixels
+# u0:  left atlas u
+# v0:  top atlas v
+# u1:  right atlas u
+# v1:  bottom atlas v
+# c:   fill color
+# ret: none on success, some(message) on allocation failure
+pub fun push_quad(dl: *DrawList, x0: f32, y0: f32, x1: f32, y1: f32, u0: f32, v0: f32, u1: f32, v1: f32, c: Color) Option[str] {
+    var tl: Vert;
+    tl.x = x0; tl.y = y0; tl.u = u0; tl.v = v0; tl.r = c.r; tl.g = c.g; tl.b = c.b; tl.a = c.a;
+    var tr: Vert;
+    tr.x = x1; tr.y = y0; tr.u = u1; tr.v = v0; tr.r = c.r; tr.g = c.g; tr.b = c.b; tr.a = c.a;
+    var br: Vert;
+    br.x = x1; br.y = y1; br.u = u1; br.v = v1; br.r = c.r; br.g = c.g; br.b = c.b; br.a = c.a;
+    var bl: Vert;
+    bl.x = x0; bl.y = y1; bl.u = u0; bl.v = v1; bl.r = c.r; bl.g = c.g; bl.b = c.b; bl.a = c.a;
+
+    var e: Option[str];
+    e = push_vert(dl, tl); if (e.has_value) { ret e; }
+    e = push_vert(dl, tr); if (e.has_value) { ret e; }
+    e = push_vert(dl, br); if (e.has_value) { ret e; }
+    e = push_vert(dl, tl); if (e.has_value) { ret e; }
+    e = push_vert(dl, br); if (e.has_value) { ret e; }
+    e = push_vert(dl, bl); if (e.has_value) { ret e; }
+    ret none[str]();
+}
+
+test "draw: push_quad adds six verts at the right corners" {
+    var a: allo.Allocator;
+    page.make(?a);
+
+    var dl: DrawList;
+    val ie: Option[str] = init(?dl, ?a);
+    if (ie.has_value) { ret 1; }
+
+    val c: Color = rgba(1.0::f32, 0.5::f32, 0.25::f32, 1.0::f32);
+    val pe: Option[str] = push_quad(?dl, 10.0::f32, 20.0::f32, 30.0::f32, 40.0::f32, 0.0::f32, 0.0::f32, 1.0::f32, 1.0::f32, c);
+    if (pe.has_value) { ret 1; }
+
+    if (count(?dl) != 6) { ret 1; }
+
+    val p: *Vert = data(?dl);
+    if (p[0].x != 10.0::f32) { ret 1; }
+    if (p[0].y != 20.0::f32) { ret 1; }
+    if (p[1].x != 30.0::f32) { ret 1; }
+    if (p[1].y != 20.0::f32) { ret 1; }
+    if (p[2].x != 30.0::f32) { ret 1; }
+    if (p[2].y != 40.0::f32) { ret 1; }
+    if (p[5].x != 10.0::f32) { ret 1; }
+    if (p[5].y != 40.0::f32) { ret 1; }
+    if (p[0].r != 1.0::f32) { ret 1; }
+    if (p[0].a != 1.0::f32) { ret 1; }
+
+    free(?dl);
+    ret 0;
+}
+
+test "draw: growth past initial cap preserves earlier verts" {
+    var a: allo.Allocator;
+    page.make(?a);
+
+    var dl: DrawList;
+    val ie: Option[str] = init(?dl, ?a);
+    if (ie.has_value) { ret 1; }
+
+    var i: usize = 0;
+    for (i < INIT_CAP + 10) {
+        var v: Vert;
+        v.x = i::f32;
+        v.y = 0.0::f32;
+        val e: Option[str] = push_vert(?dl, v);
+        if (e.has_value) { ret 1; }
+        i = i + 1;
+    }
+
+    if (count(?dl) != INIT_CAP + 10) { ret 1; }
+    if (dl.cap <= INIT_CAP) { ret 1; }
+
+    val p: *Vert = data(?dl);
+    if (p[0].x != 0.0::f32) { ret 1; }
+    if (p[INIT_CAP - 1].x != (INIT_CAP - 1)::f32) { ret 1; }
+    if (p[INIT_CAP + 9].x != (INIT_CAP + 9)::f32) { ret 1; }
+
+    free(?dl);
+    ret 0;
+}
+
+test "draw: reset zeroes len keeps cap" {
+    var a: allo.Allocator;
+    page.make(?a);
+
+    var dl: DrawList;
+    val ie: Option[str] = init(?dl, ?a);
+    if (ie.has_value) { ret 1; }
+
+    val c: Color = rgba(1.0::f32, 1.0::f32, 1.0::f32, 1.0::f32);
+    push_quad(?dl, 0.0::f32, 0.0::f32, 1.0::f32, 1.0::f32, 0.0::f32, 0.0::f32, 1.0::f32, 1.0::f32, c);
+    if (count(?dl) != 6) { ret 1; }
+
+    val cap_before: usize = dl.cap;
+    reset(?dl);
+    if (count(?dl) != 0) { ret 1; }
+    if (dl.cap != cap_before) { ret 1; }
+
+    free(?dl);
+    ret 0;
+}
