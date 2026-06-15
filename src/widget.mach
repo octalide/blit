@@ -1,0 +1,394 @@
+# blit.widget: the v0 widgets — panel, text, button, checkbox, slider.
+#
+# each widget places itself at the layout cursor, advances the cursor for the
+# next one, emits its geometry through the context painter, and hit-tests against
+# the context input. interaction uses the classic hot/active id pair: `hot` is the
+# widget under the cursor this frame, `active` is the one being pressed or dragged
+# and persists until the button releases. ids come from call order via next_id, so
+# the UI must be built with a stable sequence of calls each frame.
+
+use std.types.size.usize;
+use std.types.string.str;
+use std.types.bool.bool;
+use std.types.bool.true;
+use std.types.bool.false;
+
+use allo:    std.allocator;
+use page:    std.allocator.page;
+use draw:    blit.draw;
+use input:   blit.input;
+use font:    blit.font;
+use context: blit.context;
+
+# PAD: spacing between widgets and inside widget chrome, in pixels.
+val PAD: f32 = 4.0;
+
+# HANDLE_W: slider handle width in pixels.
+val HANDLE_W: f32 = 6.0;
+
+# row_h: height of an interactive row (a glyph plus padding above and below).
+fun row_h() f32 {
+    ret font.GLYPH_H + PAD * 2.0::f32;
+}
+
+fun c_panel()         draw.Color { ret draw.rgba(0.10::f32, 0.10::f32, 0.12::f32, 0.85::f32); }
+fun c_text()          draw.Color { ret draw.rgba(0.92::f32, 0.92::f32, 0.95::f32, 1.0::f32); }
+fun c_btn()           draw.Color { ret draw.rgba(0.25::f32, 0.25::f32, 0.30::f32, 1.0::f32); }
+fun c_btn_hot()       draw.Color { ret draw.rgba(0.35::f32, 0.35::f32, 0.42::f32, 1.0::f32); }
+fun c_btn_active()    draw.Color { ret draw.rgba(0.18::f32, 0.18::f32, 0.22::f32, 1.0::f32); }
+fun c_track()         draw.Color { ret draw.rgba(0.15::f32, 0.15::f32, 0.18::f32, 1.0::f32); }
+fun c_handle()        draw.Color { ret draw.rgba(0.55::f32, 0.55::f32, 0.65::f32, 1.0::f32); }
+fun c_handle_active() draw.Color { ret draw.rgba(0.78::f32, 0.78::f32, 0.92::f32, 1.0::f32); }
+fun c_check_fill()    draw.Color { ret draw.rgba(0.55::f32, 0.85::f32, 0.55::f32, 1.0::f32); }
+
+# clampf: clamp v to [lo, hi].
+fun clampf(v: f32, lo: f32, hi: f32) f32 {
+    if (v < lo) { ret lo; }
+    if (v > hi) { ret hi; }
+    ret v;
+}
+
+# advance: drop the cursor to the next row, back at the panel's left edge.
+fun advance(ctx: *context.Context, h: f32) {
+    ctx.cx = ctx.ox;
+    ctx.cy = ctx.cy + h + PAD;
+}
+
+# begin_panel: start a layout column at (x, y) of width w and emit its background.
+#
+# the background height is unknown until the panel's widgets are placed, so a
+# zero-height placeholder is emitted now and grown to fit by end_panel. the
+# returned handle identifies that background quad; pass it to end_panel.
+# ---
+# ctx: context
+# x:   panel left in pixels
+# y:   panel top in pixels
+# w:   panel width in pixels
+# ret: a handle for end_panel
+pub fun begin_panel(ctx: *context.Context, x: f32, y: f32, w: f32) usize {
+    ctx.ox = x;
+    ctx.oy = y;
+    ctx.cx = x;
+    ctx.cy = y;
+    ctx.pw = w;
+
+    val handle: usize = context.draw_count(ctx);
+    context.quad(ctx, x, y, x + w, y, c_panel());
+    ret handle;
+}
+
+# end_panel: grow the panel background to enclose every widget placed since
+# begin_panel. a no-op if the background was never emitted (allocation failure).
+# ---
+# ctx:    context
+# handle: the value returned by begin_panel
+pub fun end_panel(ctx: *context.Context, handle: usize) {
+    if (handle + 6 > context.draw_count(ctx)) { ret; }
+
+    val x0: f32 = ctx.ox;
+    val y0: f32 = ctx.oy;
+    val x1: f32 = ctx.ox + ctx.pw;
+    val y1: f32 = ctx.cy + PAD;
+
+    val p: *draw.Vert = context.draw_verts(ctx);
+    p[handle + 0].x = x0; p[handle + 0].y = y0;
+    p[handle + 1].x = x1; p[handle + 1].y = y0;
+    p[handle + 2].x = x1; p[handle + 2].y = y1;
+    p[handle + 3].x = x0; p[handle + 3].y = y0;
+    p[handle + 4].x = x1; p[handle + 4].y = y1;
+    p[handle + 5].x = x0; p[handle + 5].y = y1;
+}
+
+# text: draw a line of text at the cursor and advance to the next row.
+# ---
+# ctx: context
+# s:   string to draw
+pub fun text(ctx: *context.Context, s: str) {
+    context.text_at(ctx, s, ctx.cx, ctx.cy, c_text());
+    advance(ctx, font.GLYPH_H);
+}
+
+# button: a full-width clickable button with a centered label.
+#
+# returns true on the frame the button is released while the cursor is still
+# over it, after having been pressed on it.
+# ---
+# ctx:   context
+# label: button text
+# ret:   true if the button was clicked this frame
+pub fun button(ctx: *context.Context, label: str) bool {
+    val id: u64 = context.next_id(ctx);
+    val x0: f32 = ctx.cx;
+    val y0: f32 = ctx.cy;
+    val h:  f32 = row_h();
+    val x1: f32 = ctx.cx + ctx.pw;
+    val y1: f32 = y0 + h;
+
+    val hovered: u8 = input.in_rect(ctx.in, x0, y0, x1, y1);
+    if (hovered != 0) { ctx.hot = id; }
+    if (hovered != 0 && input.pressed(ctx.in) != 0) { ctx.active = id; }
+
+    var clicked: bool = false;
+    if (ctx.active == id && input.released(ctx.in) != 0 && hovered != 0) {
+        clicked = true;
+    }
+
+    var bg: draw.Color = c_btn();
+    if (ctx.hot == id) { bg = c_btn_hot(); }
+    if (ctx.active == id) { bg = c_btn_active(); }
+    context.quad(ctx, x0, y0, x1, y1, bg);
+
+    val tw: f32 = font.text_width(label);
+    val tx: f32 = x0 + (ctx.pw - tw) / 2.0::f32;
+    val ty: f32 = y0 + (h - font.GLYPH_H) / 2.0::f32;
+    context.text_at(ctx, label, tx, ty, c_text());
+
+    advance(ctx, h);
+    ret clicked;
+}
+
+# checkbox: a labeled toggle. flips @state when clicked.
+# ---
+# ctx:   context
+# label: text drawn to the right of the box
+# state: pointer to the 0/1 toggle state, updated in place
+# ret:   true if the state changed this frame
+pub fun checkbox(ctx: *context.Context, label: str, state: *u8) bool {
+    val id: u64 = context.next_id(ctx);
+    val x0: f32 = ctx.cx;
+    val y0: f32 = ctx.cy;
+    val box: f32 = row_h();
+    val bx1: f32 = x0 + box;
+    val y1: f32 = y0 + box;
+
+    val tw: f32 = font.text_width(label);
+    val rx1: f32 = bx1 + PAD + tw;
+    val hovered: u8 = input.in_rect(ctx.in, x0, y0, rx1, y1);
+    if (hovered != 0) { ctx.hot = id; }
+    if (hovered != 0 && input.pressed(ctx.in) != 0) { ctx.active = id; }
+
+    var toggled: bool = false;
+    if (ctx.active == id && input.released(ctx.in) != 0 && hovered != 0) {
+        var nv: u8 = 1;
+        if (@state != 0) { nv = 0; }
+        @state = nv;
+        toggled = true;
+    }
+
+    var bg: draw.Color = c_btn();
+    if (ctx.hot == id) { bg = c_btn_hot(); }
+    context.quad(ctx, x0, y0, bx1, y1, bg);
+    if (@state != 0) {
+        context.quad(ctx, x0 + PAD, y0 + PAD, bx1 - PAD, y1 - PAD, c_check_fill());
+    }
+
+    val ty: f32 = y0 + (box - font.GLYPH_H) / 2.0::f32;
+    context.text_at(ctx, label, bx1 + PAD, ty, c_text());
+
+    advance(ctx, box);
+    ret toggled;
+}
+
+# slider_f: a horizontal slider mapping @v linearly onto [lo, hi].
+#
+# while the handle is held, @v tracks the cursor's x within the track. the label
+# is drawn on the left of the track.
+# ---
+# ctx:   context
+# label: slider text
+# v:     pointer to the value, updated in place while dragging
+# lo:    minimum value (left end)
+# hi:    maximum value (right end)
+# ret:   true if the value changed this frame
+pub fun slider_f(ctx: *context.Context, label: str, v: *f32, lo: f32, hi: f32) bool {
+    val id: u64 = context.next_id(ctx);
+    val x0: f32 = ctx.cx;
+    val y0: f32 = ctx.cy;
+    val h:  f32 = row_h();
+    val x1: f32 = ctx.cx + ctx.pw;
+    val y1: f32 = y0 + h;
+
+    val hovered: u8 = input.in_rect(ctx.in, x0, y0, x1, y1);
+    if (hovered != 0) { ctx.hot = id; }
+    if (hovered != 0 && input.pressed(ctx.in) != 0) { ctx.active = id; }
+
+    var changed: bool = false;
+    if (ctx.active == id && ctx.in.down != 0) {
+        val track: f32 = x1 - x0;
+        var t: f32 = 0.0::f32;
+        if (track > 0.0::f32) { t = clampf((ctx.in.mx - x0) / track, 0.0::f32, 1.0::f32); }
+        val nv: f32 = lo + t * (hi - lo);
+        if (nv != @v) {
+            @v = nv;
+            changed = true;
+        }
+    }
+
+    context.quad(ctx, x0, y0, x1, y1, c_track());
+
+    var t_out: f32 = 0.0::f32;
+    if (hi != lo) { t_out = clampf((@v - lo) / (hi - lo), 0.0::f32, 1.0::f32); }
+    var span: f32 = (x1 - x0) - HANDLE_W;
+    if (span < 0.0::f32) { span = 0.0::f32; }
+    val hx: f32 = x0 + t_out * span;
+
+    var hc: draw.Color = c_handle();
+    if (ctx.active == id) { hc = c_handle_active(); }
+    context.quad(ctx, hx, y0, hx + HANDLE_W, y1, hc);
+
+    val ty: f32 = y0 + (h - font.GLYPH_H) / 2.0::f32;
+    context.text_at(ctx, label, x0 + PAD, ty, c_text());
+
+    advance(ctx, h);
+    ret changed;
+}
+
+test "widget: text advances the cursor by one row" {
+    var a: allo.Allocator;
+    page.make(?a);
+    var ctx: context.Context;
+    if (context.init(?ctx, ?a).has_value) { ret 1; }
+
+    var in: input.Input;
+    in.mx = 0.0::f32; in.my = 0.0::f32; in.down = 0; in.prev_down = 0;
+    context.begin(?ctx, in, 200.0::f32, 200.0::f32);
+    begin_panel(?ctx, 0.0::f32, 0.0::f32, 100.0::f32);
+
+    val cy0: f32 = ctx.cy;
+    val n0: usize = context.draw_count(?ctx);
+    text(?ctx, "hello");
+
+    if (ctx.cy != cy0 + font.GLYPH_H + PAD) { ret 1; }
+    if (ctx.cx != ctx.ox) { ret 1; }
+    if (context.draw_count(?ctx) <= n0) { ret 1; }
+
+    context.free(?ctx);
+    ret 0;
+}
+
+test "widget: button is true only on release inside after press" {
+    var a: allo.Allocator;
+    page.make(?a);
+    var ctx: context.Context;
+    if (context.init(?ctx, ?a).has_value) { ret 1; }
+
+    var in: input.Input;
+    in.mx = 10.0::f32; in.my = 5.0::f32; in.prev_down = 0;
+
+    # frame 1: press on the button
+    in.down = 1;
+    context.begin(?ctx, in, 200.0::f32, 200.0::f32);
+    begin_panel(?ctx, 0.0::f32, 0.0::f32, 100.0::f32);
+    val n0: usize = context.draw_count(?ctx);
+    if (button(?ctx, "ok") != false) { ret 1; }
+    if (context.draw_count(?ctx) <= n0) { ret 1; }
+    context.end(?ctx);
+
+    # frame 2: release while still over the button -> click
+    in.down = 0;
+    context.begin(?ctx, in, 200.0::f32, 200.0::f32);
+    begin_panel(?ctx, 0.0::f32, 0.0::f32, 100.0::f32);
+    if (button(?ctx, "ok") != true) { ret 1; }
+    context.end(?ctx);
+
+    context.free(?ctx);
+    ret 0;
+}
+
+test "widget: button is false when released outside" {
+    var a: allo.Allocator;
+    page.make(?a);
+    var ctx: context.Context;
+    if (context.init(?ctx, ?a).has_value) { ret 1; }
+
+    var in: input.Input;
+    in.prev_down = 0;
+
+    # frame 1: press on the button
+    in.mx = 10.0::f32; in.my = 5.0::f32; in.down = 1;
+    context.begin(?ctx, in, 200.0::f32, 200.0::f32);
+    begin_panel(?ctx, 0.0::f32, 0.0::f32, 100.0::f32);
+    button(?ctx, "ok");
+    context.end(?ctx);
+
+    # frame 2: move away, then release -> no click
+    in.mx = 500.0::f32; in.my = 500.0::f32; in.down = 0;
+    context.begin(?ctx, in, 200.0::f32, 200.0::f32);
+    begin_panel(?ctx, 0.0::f32, 0.0::f32, 100.0::f32);
+    if (button(?ctx, "ok") != false) { ret 1; }
+    context.end(?ctx);
+
+    context.free(?ctx);
+    ret 0;
+}
+
+test "widget: checkbox toggles state on click" {
+    var a: allo.Allocator;
+    page.make(?a);
+    var ctx: context.Context;
+    if (context.init(?ctx, ?a).has_value) { ret 1; }
+
+    var st: u8 = 0;
+    var in: input.Input;
+    in.mx = 5.0::f32; in.my = 5.0::f32; in.prev_down = 0;
+
+    # press
+    in.down = 1;
+    context.begin(?ctx, in, 200.0::f32, 200.0::f32);
+    begin_panel(?ctx, 0.0::f32, 0.0::f32, 100.0::f32);
+    if (checkbox(?ctx, "on", ?st) != false) { ret 1; }
+    if (st != 0) { ret 1; }
+    context.end(?ctx);
+
+    # release -> toggle on
+    in.down = 0;
+    context.begin(?ctx, in, 200.0::f32, 200.0::f32);
+    begin_panel(?ctx, 0.0::f32, 0.0::f32, 100.0::f32);
+    if (checkbox(?ctx, "on", ?st) != true) { ret 1; }
+    if (st != 1) { ret 1; }
+    context.end(?ctx);
+
+    context.free(?ctx);
+    ret 0;
+}
+
+test "widget: slider maps the cursor linearly across the track" {
+    var a: allo.Allocator;
+    page.make(?a);
+    var ctx: context.Context;
+    if (context.init(?ctx, ?a).has_value) { ret 1; }
+
+    var in: input.Input;
+    in.my = 5.0::f32; in.down = 1; in.prev_down = 1;
+
+    # left end -> lo
+    var v: f32 = 5.0::f32;
+    in.mx = 0.0::f32;
+    context.begin(?ctx, in, 200.0::f32, 200.0::f32);
+    begin_panel(?ctx, 0.0::f32, 0.0::f32, 100.0::f32);
+    ctx.active = 1;
+    slider_f(?ctx, "x", ?v, 0.0::f32, 10.0::f32);
+    if (v != 0.0::f32) { ret 1; }
+    context.end(?ctx);
+
+    # middle -> midpoint
+    in.mx = 50.0::f32;
+    context.begin(?ctx, in, 200.0::f32, 200.0::f32);
+    begin_panel(?ctx, 0.0::f32, 0.0::f32, 100.0::f32);
+    ctx.active = 1;
+    slider_f(?ctx, "x", ?v, 0.0::f32, 10.0::f32);
+    if (v != 5.0::f32) { ret 1; }
+    context.end(?ctx);
+
+    # right end -> hi
+    in.mx = 100.0::f32;
+    context.begin(?ctx, in, 200.0::f32, 200.0::f32);
+    begin_panel(?ctx, 0.0::f32, 0.0::f32, 100.0::f32);
+    ctx.active = 1;
+    slider_f(?ctx, "x", ?v, 0.0::f32, 10.0::f32);
+    if (v != 10.0::f32) { ret 1; }
+    context.end(?ctx);
+
+    context.free(?ctx);
+    ret 0;
+}
