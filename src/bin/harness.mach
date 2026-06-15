@@ -1,0 +1,10 @@
+# temporary test harness — hosts the library's tests under a bin artifact.
+
+use std.runtime;
+
+use blit;
+
+$main.symbol = "main";
+fun main(argc: i64, argv: **u8) i64 {
+    ret 0;
+}
