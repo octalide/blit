@@ -1,0 +1,289 @@
+# blit.context: the immediate-mode context — draw list, input, layout, and the
+# painter helpers widgets build on.
+#
+# the context owns the per-frame draw list and the current input, tracks a simple
+# top-to-bottom layout cursor, and assigns stable widget ids by call order. it is
+# also the painter: quad/glyph/text_at emit into the draw list through the font
+# atlas so widgets never touch the draw list or font directly. a draw-list growth
+# failure is recorded in `oom` rather than silently dropping geometry; check ok().
+
+use std.types.size.usize;
+use std.types.string.str;
+use std.types.option.Option;
+use std.types.option.none;
+
+use allo:  std.allocator;
+use page:  std.allocator.page;
+use draw:  blit.draw;
+use input: blit.input;
+use font:  blit.font;
+
+# Context: immediate-mode UI state for one consumer.
+# ---
+# dl:     draw list accumulated each frame
+# in:     input for the current frame
+# sw:     screen width in pixels
+# sh:     screen height in pixels
+# ox:     layout origin x (panel left)
+# oy:     layout origin y (panel top)
+# cx:     layout cursor x
+# cy:     layout cursor y
+# pw:     current panel width
+# seq:    widget id counter, reset each frame
+# hot:    id of the widget under the cursor this frame (0 = none)
+# active: id of the widget being interacted with, persists across frames (0 = none)
+# oom:    1 if a draw-list growth failed this frame, else 0
+pub rec Context {
+    dl:     draw.DrawList;
+    in:     input.Input;
+    sw:     f32;
+    sh:     f32;
+    ox:     f32;
+    oy:     f32;
+    cx:     f32;
+    cy:     f32;
+    pw:     f32;
+    seq:    u64;
+    hot:    u64;
+    active: u64;
+    oom:    u8;
+}
+
+# init: initialize a context and its draw list.
+# ---
+# ctx: context to initialize
+# a:   allocator backing the draw list
+# ret: none on success, some(message) on allocation failure
+pub fun init(ctx: *Context, a: *allo.Allocator) Option[str] {
+    val e: Option[str] = draw.init(?ctx.dl, a);
+    if (e.has_value) { ret e; }
+
+    ctx.in.mx = 0.0::f32;
+    ctx.in.my = 0.0::f32;
+    ctx.in.down = 0;
+    ctx.in.prev_down = 0;
+
+    ctx.sw = 0.0::f32;
+    ctx.sh = 0.0::f32;
+    ctx.ox = 0.0::f32;
+    ctx.oy = 0.0::f32;
+    ctx.cx = 0.0::f32;
+    ctx.cy = 0.0::f32;
+    ctx.pw = 0.0::f32;
+    ctx.seq = 0;
+    ctx.hot = 0;
+    ctx.active = 0;
+    ctx.oom = 0;
+    ret none[str]();
+}
+
+# free: release the context's draw list.
+# ---
+# ctx: context to free
+pub fun free(ctx: *Context) {
+    draw.free(?ctx.dl);
+}
+
+# begin: start a frame — store input (carrying the previous button state into
+# prev_down), clear the draw list, and reset ids and layout.
+# ---
+# ctx: context
+# in:  this frame's input (consumer sets mx/my/down; prev_down is managed here)
+# sw:  screen width in pixels
+# sh:  screen height in pixels
+pub fun begin(ctx: *Context, in: input.Input, sw: f32, sh: f32) {
+    val prev: u8 = ctx.in.down;
+    ctx.in = in;
+    ctx.in.prev_down = prev;
+
+    ctx.sw = sw;
+    ctx.sh = sh;
+    ctx.ox = 0.0::f32;
+    ctx.oy = 0.0::f32;
+    ctx.cx = 0.0::f32;
+    ctx.cy = 0.0::f32;
+    ctx.pw = 0.0::f32;
+    ctx.seq = 0;
+    ctx.hot = 0;
+    ctx.oom = 0;
+
+    draw.reset(?ctx.dl);
+}
+
+# end: finish a frame — drop the active widget once the button is released.
+# ---
+# ctx: context
+pub fun end(ctx: *Context) {
+    if (ctx.in.down == 0) { ctx.active = 0; }
+}
+
+# next_id: allocate the next widget id for this frame (stable while call order is).
+# ---
+# ctx: context
+# ret: a nonzero widget id
+pub fun next_id(ctx: *Context) u64 {
+    ctx.seq = ctx.seq + 1;
+    ret ctx.seq;
+}
+
+# ok: whether the frame's geometry is complete (no draw-list growth failed).
+# ---
+# ctx: context
+# ret: 1 if no allocation failed this frame, else 0
+pub fun ok(ctx: *Context) u8 {
+    if (ctx.oom != 0) { ret 0; }
+    ret 1;
+}
+
+# draw_verts: pointer to the frame's vertices, for the consumer to upload.
+# ---
+# ctx: context
+# ret: pointer to the first vertex
+pub fun draw_verts(ctx: *Context) *draw.Vert {
+    ret draw.data(?ctx.dl);
+}
+
+# draw_count: number of vertices to draw this frame.
+# ---
+# ctx: context
+# ret: vertex count
+pub fun draw_count(ctx: *Context) usize {
+    ret draw.count(?ctx.dl);
+}
+
+# record: fold a draw-list result into the context's oom flag.
+fun record(ctx: *Context, e: Option[str]) {
+    if (e.has_value) { ctx.oom = 1; }
+}
+
+# quad: emit a solid-color rectangle sampling the atlas white cell.
+# ---
+# ctx: context
+# x0:  left x in pixels
+# y0:  top y in pixels
+# x1:  right x in pixels
+# y1:  bottom y in pixels
+# c:   fill color
+pub fun quad(ctx: *Context, x0: f32, y0: f32, x1: f32, y1: f32, c: draw.Color) {
+    var wu: f32;
+    var wv: f32;
+    font.white_uv(?wu, ?wv);
+    record(ctx, draw.push_quad(?ctx.dl, x0, y0, x1, y1, wu, wv, wu, wv, c));
+}
+
+# glyph: emit one character cell at (x, y), tinted by c.
+# ---
+# ctx: context
+# ch:  character to draw
+# x:   left x in pixels
+# y:   top y in pixels
+# c:   tint color
+pub fun glyph(ctx: *Context, ch: u8, x: f32, y: f32, c: draw.Color) {
+    var u0: f32;
+    var v0: f32;
+    var u1: f32;
+    var v1: f32;
+    font.glyph_uv(ch, ?u0, ?v0, ?u1, ?v1);
+    record(ctx, draw.push_quad(?ctx.dl, x, y, x + font.GLYPH_W, y + font.GLYPH_H, u0, v0, u1, v1, c));
+}
+
+# text_at: draw a string starting at (x, y), advancing one glyph per character.
+# ---
+# ctx: context
+# s:   string to draw
+# x:   left x in pixels
+# y:   top y in pixels
+# c:   tint color
+pub fun text_at(ctx: *Context, s: str, x: f32, y: f32, c: draw.Color) {
+    var i: usize = 0;
+    var px: f32 = x;
+    for (s[i] != 0) {
+        glyph(ctx, s[i], px, y, c);
+        px = px + font.GLYPH_W;
+        i = i + 1;
+    }
+}
+
+test "context: begin resets seq and draw list, next_id increments" {
+    var a: allo.Allocator;
+    page.make(?a);
+    var ctx: Context;
+    val e: Option[str] = init(?ctx, ?a);
+    if (e.has_value) { ret 1; }
+
+    var in: input.Input;
+    in.mx = 1.0::f32; in.my = 2.0::f32; in.down = 0; in.prev_down = 0;
+    begin(?ctx, in, 800.0::f32, 600.0::f32);
+
+    if (ctx.seq != 0) { ret 1; }
+    if (draw_count(?ctx) != 0) { ret 1; }
+    if (ctx.sw != 800.0::f32) { ret 1; }
+    if (ctx.sh != 600.0::f32) { ret 1; }
+
+    if (next_id(?ctx) != 1) { ret 1; }
+    if (next_id(?ctx) != 2) { ret 1; }
+    if (ctx.seq != 2) { ret 1; }
+
+    val white: draw.Color = draw.rgba(1.0::f32, 1.0::f32, 1.0::f32, 1.0::f32);
+    quad(?ctx, 0.0::f32, 0.0::f32, 10.0::f32, 10.0::f32, white);
+    if (draw_count(?ctx) != 6) { ret 1; }
+
+    begin(?ctx, in, 800.0::f32, 600.0::f32);
+    if (draw_count(?ctx) != 0) { ret 1; }
+    if (ctx.seq != 0) { ret 1; }
+
+    free(?ctx);
+    ret 0;
+}
+
+test "context: prev_down carried across begin drives press and release" {
+    var a: allo.Allocator;
+    page.make(?a);
+    var ctx: Context;
+    if (init(?ctx, ?a).has_value) { ret 1; }
+
+    var in: input.Input;
+    in.mx = 0.0::f32; in.my = 0.0::f32; in.prev_down = 0;
+
+    in.down = 1;
+    begin(?ctx, in, 100.0::f32, 100.0::f32);
+    if (ctx.in.down != 1) { ret 1; }
+    if (ctx.in.prev_down != 0) { ret 1; }
+    if (input.pressed(ctx.in) != 1) { ret 1; }
+    end(?ctx);
+
+    in.down = 1;
+    begin(?ctx, in, 100.0::f32, 100.0::f32);
+    if (ctx.in.prev_down != 1) { ret 1; }
+    if (input.pressed(ctx.in) != 0) { ret 1; }
+    end(?ctx);
+
+    in.down = 0;
+    begin(?ctx, in, 100.0::f32, 100.0::f32);
+    if (ctx.in.prev_down != 1) { ret 1; }
+    if (input.released(ctx.in) != 1) { ret 1; }
+    end(?ctx);
+
+    free(?ctx);
+    ret 0;
+}
+
+test "context: text_at emits a quad per character" {
+    var a: allo.Allocator;
+    page.make(?a);
+    var ctx: Context;
+    if (init(?ctx, ?a).has_value) { ret 1; }
+
+    var in: input.Input;
+    in.mx = 0.0::f32; in.my = 0.0::f32; in.down = 0; in.prev_down = 0;
+    begin(?ctx, in, 100.0::f32, 100.0::f32);
+
+    val c: draw.Color = draw.rgba(1.0::f32, 1.0::f32, 1.0::f32, 1.0::f32);
+    text_at(?ctx, "hi", 0.0::f32, 0.0::f32, c);
+    # two glyphs, six verts each
+    if (draw_count(?ctx) != 12) { ret 1; }
+    if (ok(?ctx) != 1) { ret 1; }
+
+    free(?ctx);
+    ret 0;
+}

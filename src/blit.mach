@@ -14,6 +14,7 @@ use std.types.string.str;
 fwd blit.draw;
 fwd blit.font;
 fwd blit.input;
+fwd blit.context;
 
 # VERSION: blit library version.
 pub val VERSION: str = "0.1.0";
