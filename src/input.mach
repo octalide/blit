@@ -1,0 +1,101 @@
+# blit.input: per-frame input the consumer fills before calling widgets.
+#
+# v0 covers the mouse only — position and primary button. the consumer writes
+# mx/my/down each frame; the context carries the previous frame's button state
+# into prev_down so press and release edges can be detected. extend with keys
+# and scroll later.
+
+# Input: mouse input for a single frame.
+# ---
+# mx:        cursor x in pixels
+# my:        cursor y in pixels
+# down:      1 if the primary button is down this frame, else 0
+# prev_down: 1 if the primary button was down last frame, else 0
+pub rec Input {
+    mx:        f32;
+    my:        f32;
+    down:      u8;
+    prev_down: u8;
+}
+
+# pressed: 1 on the frame the primary button transitions from up to down.
+# ---
+# in:  input state
+# ret: 1 if pressed this frame, else 0
+pub fun pressed(in: Input) u8 {
+    if (in.down != 0 && in.prev_down == 0) { ret 1; }
+    ret 0;
+}
+
+# released: 1 on the frame the primary button transitions from down to up.
+# ---
+# in:  input state
+# ret: 1 if released this frame, else 0
+pub fun released(in: Input) u8 {
+    if (in.down == 0 && in.prev_down != 0) { ret 1; }
+    ret 0;
+}
+
+# in_rect: test whether the cursor lies in the half-open rect [x0, x1) x [y0, y1).
+# ---
+# in:  input state
+# x0:  left edge in pixels (inclusive)
+# y0:  top edge in pixels (inclusive)
+# x1:  right edge in pixels (exclusive)
+# y1:  bottom edge in pixels (exclusive)
+# ret: 1 if the cursor is inside, else 0
+pub fun in_rect(in: Input, x0: f32, y0: f32, x1: f32, y1: f32) u8 {
+    if (in.mx >= x0 && in.mx < x1 && in.my >= y0 && in.my < y1) { ret 1; }
+    ret 0;
+}
+
+test "input: pressed only on the up-to-down edge" {
+    var in: Input;
+    in.mx = 0.0::f32; in.my = 0.0::f32;
+    in.down = 1; in.prev_down = 0;
+    if (pressed(in) != 1) { ret 1; }
+    in.down = 1; in.prev_down = 1;
+    if (pressed(in) != 0) { ret 1; }
+    in.down = 0; in.prev_down = 0;
+    if (pressed(in) != 0) { ret 1; }
+    in.down = 0; in.prev_down = 1;
+    if (pressed(in) != 0) { ret 1; }
+    ret 0;
+}
+
+test "input: released only on the down-to-up edge" {
+    var in: Input;
+    in.mx = 0.0::f32; in.my = 0.0::f32;
+    in.down = 0; in.prev_down = 1;
+    if (released(in) != 1) { ret 1; }
+    in.down = 1; in.prev_down = 1;
+    if (released(in) != 0) { ret 1; }
+    in.down = 1; in.prev_down = 0;
+    if (released(in) != 0) { ret 1; }
+    in.down = 0; in.prev_down = 0;
+    if (released(in) != 0) { ret 1; }
+    ret 0;
+}
+
+test "input: in_rect boundaries are half-open" {
+    var in: Input;
+    in.down = 0; in.prev_down = 0;
+
+    in.mx = 5.0::f32; in.my = 5.0::f32;
+    if (in_rect(in, 0.0::f32, 0.0::f32, 10.0::f32, 10.0::f32) != 1) { ret 1; }
+
+    # inclusive low edge
+    in.mx = 0.0::f32; in.my = 0.0::f32;
+    if (in_rect(in, 0.0::f32, 0.0::f32, 10.0::f32, 10.0::f32) != 1) { ret 1; }
+
+    # exclusive high edge
+    in.mx = 10.0::f32; in.my = 5.0::f32;
+    if (in_rect(in, 0.0::f32, 0.0::f32, 10.0::f32, 10.0::f32) != 0) { ret 1; }
+    in.mx = 5.0::f32; in.my = 10.0::f32;
+    if (in_rect(in, 0.0::f32, 0.0::f32, 10.0::f32, 10.0::f32) != 0) { ret 1; }
+
+    # outside
+    in.mx = 0.0::f32 - 1.0::f32; in.my = 5.0::f32;
+    if (in_rect(in, 0.0::f32, 0.0::f32, 10.0::f32, 10.0::f32) != 0) { ret 1; }
+    ret 0;
+}
