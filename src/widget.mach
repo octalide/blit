@@ -125,11 +125,12 @@ pub fun button(ctx: *context.Context, label: str) bool {
     val y1: f32 = y0 + h;
 
     val hovered: u8 = input.in_rect(ctx.in, x0, y0, x1, y1);
-    if (hovered != 0) { ctx.hot = id; }
-    if (hovered != 0 && input.pressed(ctx.in) != 0) { ctx.active = id; }
+    val vis:     u8 = context.input_visible(ctx, ctx.in.mx, ctx.in.my);
+    if (hovered != 0 && vis != 0) { ctx.hot = id; }
+    if (hovered != 0 && vis != 0 && input.pressed(ctx.in) != 0) { ctx.active = id; }
 
     var clicked: bool = false;
-    if (ctx.active == id && input.released(ctx.in) != 0 && hovered != 0) {
+    if (ctx.active == id && input.released(ctx.in) != 0 && hovered != 0 && vis != 0) {
         clicked = true;
     }
 
@@ -164,11 +165,12 @@ pub fun checkbox(ctx: *context.Context, label: str, state: *u8) bool {
     val tw: f32 = font.text_width(label);
     val rx1: f32 = bx1 + PAD + tw;
     val hovered: u8 = input.in_rect(ctx.in, x0, y0, rx1, y1);
-    if (hovered != 0) { ctx.hot = id; }
-    if (hovered != 0 && input.pressed(ctx.in) != 0) { ctx.active = id; }
+    val vis:     u8 = context.input_visible(ctx, ctx.in.mx, ctx.in.my);
+    if (hovered != 0 && vis != 0) { ctx.hot = id; }
+    if (hovered != 0 && vis != 0 && input.pressed(ctx.in) != 0) { ctx.active = id; }
 
     var toggled: bool = false;
-    if (ctx.active == id && input.released(ctx.in) != 0 && hovered != 0) {
+    if (ctx.active == id && input.released(ctx.in) != 0 && hovered != 0 && vis != 0) {
         var nv: u8 = 1;
         if (@state != 0) { nv = 0; }
         @state = nv;
@@ -209,8 +211,9 @@ pub fun slider_f(ctx: *context.Context, label: str, v: *f32, lo: f32, hi: f32) b
     val y1: f32 = y0 + h;
 
     val hovered: u8 = input.in_rect(ctx.in, x0, y0, x1, y1);
-    if (hovered != 0) { ctx.hot = id; }
-    if (hovered != 0 && input.pressed(ctx.in) != 0) { ctx.active = id; }
+    val vis:     u8 = context.input_visible(ctx, ctx.in.mx, ctx.in.my);
+    if (hovered != 0 && vis != 0) { ctx.hot = id; }
+    if (hovered != 0 && vis != 0 && input.pressed(ctx.in) != 0) { ctx.active = id; }
 
     var changed: bool = false;
     if (ctx.active == id && ctx.in.down != 0) {
