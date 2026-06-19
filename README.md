@@ -30,6 +30,25 @@ blit.context.end(?ctx);
 `blit.draw`, `blit.font`, `blit.input`, `blit.context`, `blit.widget`. A
 submodule can also be imported directly, e.g. `use w: blit.widget;`.
 
+## Clipping & sub-surfaces
+
+Clipping is geometric and CPU-side, so blit stays out of the backend. Push a
+clip rect with `blit.context.push_clip(?ctx, x0, y0, x1, y1)` — intersected with
+the active rect — and restore it with `pop_clip`. Quads fully outside the rect
+are dropped and partial ones are shrunk with their uvs interpolated, and a
+clipped-out widget never becomes hot.
+
+`blit.context.begin_surface(?ctx, x, y, w, h, scroll_x, scroll_y)` opens a
+clipped region with its own scrolled local coordinate space: emit content at
+local coordinates and read the returned `Surface`'s `local_mx`/`local_my`/
+`inside` to hit-test custom content against `blit.input`. Close it with
+`end_surface`.
+
+Beyond the v0 widgets, `blit.widget.dropdown` is an inline accordion select,
+`blit.widget.begin_window`/`end_window` is a draggable, collapsible titled
+window, and `blit.widget.region_clicked` hit-tests an arbitrary screen rect for
+consumer-drawn affordances.
+
 ## Rendering
 
 blit emits one vertex stream that draws both solid rectangles and text through
