@@ -32,3 +32,6 @@ out   = "out/{target}/lib/lib{name}.a"
 [deps.mach-std]
 git = "https://github.com/octalide/mach-std"
 ref = "branch/main"
+
+[bin.blit]
+entry = "bin/harness.mach"

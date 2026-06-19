@@ -1,15 +1,17 @@
-# blit — a mach-native immediate-mode GUI library.
+# blit — an immediate-mode GUI library.
 #
-# blit is backend-agnostic: widgets accumulate a draw list of textured,
-# colored triangles and report interaction results; the consumer feeds input
-# each frame, calls widget functions, then uploads and renders the draw list
-# (e.g. through mach-gl). blit owns no GL and no window — only layout, input,
-# a draw list, and an embedded bitmap font. project id is `blit`, so consumers
-# reach everything as blit.*.
-#
-# this surface re-exports the submodules as they land.
+# widgets accumulate a draw list of textured, colored triangles and report
+# interaction; the consumer feeds input each frame, calls widget functions,
+# then uploads and renders the draw list. project id is `blit`, so `use blit;`
+# reaches each submodule under its short name, e.g. blit.widget.button.
 
 use std.types.string.str;
+
+fwd blit.draw;
+fwd blit.font;
+fwd blit.input;
+fwd blit.context;
+fwd blit.widget;
 
 # VERSION: blit library version.
 pub val VERSION: str = "0.1.0";

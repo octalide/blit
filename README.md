@@ -1,51 +1,88 @@
 # blit
 
-A mach-native immediate-mode GUI library, written entirely in Mach. No C
-dependencies, no libm — just layout, input, a draw list, and an embedded
-bitmap font.
+An immediate-mode GUI library in Mach.
 
-blit is **backend-agnostic**. Widgets accumulate a draw list of textured,
-colored triangles and report interaction results; the consumer feeds input
-each frame, calls widget functions, then uploads and renders the draw list
-through whatever it likes (e.g. [mach-gl](https://github.com/octalide/mach-gl)).
-blit owns no window and no GL.
+Widgets accumulate a draw list of colored, textured triangles and report
+interaction. The consumer feeds input each frame, runs the widgets, and uploads
+and renders the resulting vertices — blit stays out of the windowing and
+rendering.
 
 ```mach
 use blit;
 
-# once: upload blit.font_atlas() as a texture, build a quad shader.
+# once, at startup:
+blit.font.build_atlas(?a);            # rasterize the font atlas
+# upload blit.font.atlas_pixels() as an RGBA8 texture (see Rendering)
+
 # per frame:
-blit.begin(?ctx, ?input, screen_w, screen_h);
-if (blit.button(?ctx, "step")) { ... }
-blit.slider_f(?ctx, "eta", ?eta, 0.0, 1.0);
-blit.end(?ctx);
-# then: upload blit.draw_verts(?ctx) and draw as triangles with the atlas.
+blit.context.begin(?ctx, in, screen_w, screen_h);
+val panel: usize = blit.widget.begin_panel(?ctx, 8.0::f32, 8.0::f32, 200.0::f32);
+blit.widget.text(?ctx, "controls");
+if (blit.widget.button(?ctx, "step")) { ... }
+blit.widget.checkbox(?ctx, "running", ?running);
+blit.widget.slider_f(?ctx, "rate", ?rate, 0.0::f32, 1.0::f32);
+blit.widget.end_panel(?ctx, panel);
+blit.context.end(?ctx);
+# upload blit.context.draw_verts(?ctx) / draw_count(?ctx) and draw as triangles.
 ```
 
-## Goals
+`use blit;` binds the surface; reach everything through its submodule:
+`blit.draw`, `blit.font`, `blit.input`, `blit.context`, `blit.widget`. A
+submodule can also be imported directly, e.g. `use w: blit.widget;`.
 
-- **Pure Mach.** Every line in Mach; no C/C++ bindings, no libm.
-- **Backend-agnostic.** A draw list of `(x, y, u, v, rgba)` vertices plus an
-  embedded font atlas; the consumer renders. Zero coupling to GL/GLFW.
-- **Immediate mode.** No retained widget tree; the UI is rebuilt each frame
-  from straight-line calls, state lives in the caller.
-- **Small and legible.** A handful of modules, readable over clever.
+## Clipping & sub-surfaces
 
-## Status
+Clipping is geometric and CPU-side, so blit stays out of the backend. Push a
+clip rect with `blit.context.push_clip(?ctx, x0, y0, x1, y1)` — intersected with
+the active rect — and restore it with `pop_clip`. Quads fully outside the rect
+are dropped and partial ones are shrunk with their uvs interpolated, and a
+clipped-out widget never becomes hot.
 
-v0, under active development. Consumed first by
-[co](https://github.com/octalide/co)'s 3D organism viewer.
+`blit.context.begin_surface(?ctx, x, y, w, h, scroll_x, scroll_y)` opens a
+clipped region with its own scrolled local coordinate space: emit content at
+local coordinates and read the returned `Surface`'s `local_mx`/`local_my`/
+`inside` to hit-test custom content against `blit.input`. Close it with
+`end_surface`.
 
-## Layout
+Beyond the v0 widgets, `blit.widget.dropdown` is an inline accordion select,
+`blit.widget.begin_window`/`end_window` is a draggable, collapsible titled
+window, and `blit.widget.region_clicked` hit-tests an arbitrary screen rect for
+consumer-drawn affordances.
+
+## Rendering
+
+blit emits one vertex stream that draws both solid rectangles and text through
+a single shader and texture. Solid quads sample a reserved white texel, so
+`color * texel` is the flat color; glyph quads sample the glyph's cell.
+
+- **Atlas.** `blit.font.build_atlas(?a)` rasterizes the font once;
+  `blit.font.atlas_pixels()` returns RGBA8, `ATLAS_W`×`ATLAS_H` (128×48). Use
+  nearest filtering.
+- **Vertex.** `blit.draw.Vert` is 8 `f32`, 32-byte stride: `aPos` (vec2) at 0,
+  `aUV` (vec2) at 8, `aColor` (vec4) at 16. Positions in pixels, uv in [0, 1],
+  straight rgba.
+- **Shader.** One `vec2 uScreen` uniform:
+  ```glsl
+  gl_Position = vec4(aPos.x / uScreen.x * 2.0 - 1.0,
+                     1.0 - aPos.y / uScreen.y * 2.0, 0.0, 1.0);
+  FragColor   = aColor * texture(atlas, aUV);
+  ```
+- **Per frame.** Fill an `Input` (`mx`, `my`, `down`), `begin`, widgets, `end`,
+  then upload `draw_verts` / `draw_count` and draw `GL_TRIANGLES` with
+  `SRC_ALPHA` / `ONE_MINUS_SRC_ALPHA` blending.
+
+## Build & test
 
 ```
-src/
-  blit.mach     library surface (re-exports the submodules)
-  ...           draw list, input, context, font, widgets (landing incrementally)
+mach build
+mach test --bin blit
 ```
+
+Tests are hosted by the `[bin.blit]` harness — a static library has no entry
+point to link a test runner against.
 
 ## Conventions
 
-`main`/`dev` long-lived branches; `feat/*` and `fix/*` branch off `dev` and PR
-back; `dev` integrates to `main` for releases. Conventional commits, semver
-tags, `branch/main` as the published ref.
+`main`/`dev` long-lived branches; `feat/*` and `fix/*` branch off `dev` and
+merge back; `dev` integrates to `main` for releases. Conventional commits,
+semver tags.
