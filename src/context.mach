@@ -6,6 +6,12 @@
 # also the painter: quad/glyph/text_at emit into the draw list through the font
 # atlas so widgets never touch the draw list or font directly. a draw-list growth
 # failure is recorded in `oom` rather than silently dropping geometry; check ok().
+#
+# the painter also carries a CPU clip stack and a local-origin offset. every quad
+# is shifted by the local origin into screen space, then clipped to the active
+# rect — quads fully outside are dropped and partial ones are shrunk with their
+# uvs interpolated, so all clipping stays geometric and backend-agnostic. push a
+# sub-surface (begin_surface) to draw custom content in a scrolled local space.
 
 use std.types.size.usize;
 use std.types.string.str;
@@ -18,35 +24,72 @@ use draw:  blit.draw;
 use input: blit.input;
 use font:  blit.font;
 
+# CLIP_DEPTH: maximum nesting of pushed clip rects and local origins.
+pub val CLIP_DEPTH: usize = 16;
+
 # Context: immediate-mode UI state for one consumer.
 # ---
-# dl:     draw list accumulated each frame
-# in:     input for the current frame
-# sw:     screen width in pixels
-# sh:     screen height in pixels
-# ox:     layout origin x (panel left)
-# oy:     layout origin y (panel top)
-# cx:     layout cursor x
-# cy:     layout cursor y
-# pw:     current panel width
-# seq:    widget id counter, reset each frame
-# hot:    id of the widget under the cursor this frame (0 = none)
-# active: id of the widget being interacted with, persists across frames (0 = none)
-# oom:    1 if a draw-list growth failed this frame, else 0
+# dl:            draw list accumulated each frame
+# in:            input for the current frame
+# sw:            screen width in pixels
+# sh:            screen height in pixels
+# ox:            layout origin x (panel left)
+# oy:            layout origin y (panel top)
+# cx:            layout cursor x
+# cy:            layout cursor y
+# pw:            current panel width
+# seq:           widget id counter, reset each frame
+# hot:           id of the widget under the cursor this frame (0 = none)
+# active:        id of the widget being interacted with, persists across frames (0 = none)
+# open_dropdown: id of the currently open dropdown, persists across frames (0 = none)
+# drag_off_x:    cursor-to-origin x offset captured when a drag begins
+# drag_off_y:    cursor-to-origin y offset captured when a drag begins
+# lx:            local origin x added to emitted positions before clipping
+# ly:            local origin y added to emitted positions before clipping
+# clip_x0:       active clip rect left in screen pixels
+# clip_y0:       active clip rect top in screen pixels
+# clip_x1:       active clip rect right in screen pixels
+# clip_y1:       active clip rect bottom in screen pixels
+# clip_sp:       clip stack depth (number of pushed parent rects)
+# clip_x0s:      saved parent clip lefts
+# clip_y0s:      saved parent clip tops
+# clip_x1s:      saved parent clip rights
+# clip_y1s:      saved parent clip bottoms
+# org_sp:        local-origin stack depth
+# org_xs:        saved parent local-origin xs
+# org_ys:        saved parent local-origin ys
+# oom:           1 if a draw-list growth failed this frame, else 0
 pub rec Context {
-    dl:     draw.DrawList;
-    in:     input.Input;
-    sw:     f32;
-    sh:     f32;
-    ox:     f32;
-    oy:     f32;
-    cx:     f32;
-    cy:     f32;
-    pw:     f32;
-    seq:    u64;
-    hot:    u64;
-    active: u64;
-    oom:    u8;
+    dl:            draw.DrawList;
+    in:            input.Input;
+    sw:            f32;
+    sh:            f32;
+    ox:            f32;
+    oy:            f32;
+    cx:            f32;
+    cy:            f32;
+    pw:            f32;
+    seq:           u64;
+    hot:           u64;
+    active:        u64;
+    open_dropdown: u64;
+    drag_off_x:    f32;
+    drag_off_y:    f32;
+    lx:            f32;
+    ly:            f32;
+    clip_x0:       f32;
+    clip_y0:       f32;
+    clip_x1:       f32;
+    clip_y1:       f32;
+    clip_sp:       usize;
+    clip_x0s:      [16]f32;
+    clip_y0s:      [16]f32;
+    clip_x1s:      [16]f32;
+    clip_y1s:      [16]f32;
+    org_sp:        usize;
+    org_xs:        [16]f32;
+    org_ys:        [16]f32;
+    oom:           u8;
 }
 
 # init: initialize a context and its draw list.
@@ -73,6 +116,17 @@ pub fun init(ctx: *Context, a: *allo.Allocator) Option[str] {
     ctx.seq = 0;
     ctx.hot = 0;
     ctx.active = 0;
+    ctx.open_dropdown = 0;
+    ctx.drag_off_x = 0.0::f32;
+    ctx.drag_off_y = 0.0::f32;
+    ctx.lx = 0.0::f32;
+    ctx.ly = 0.0::f32;
+    ctx.clip_x0 = 0.0::f32;
+    ctx.clip_y0 = 0.0::f32;
+    ctx.clip_x1 = 0.0::f32;
+    ctx.clip_y1 = 0.0::f32;
+    ctx.clip_sp = 0;
+    ctx.org_sp = 0;
     ctx.oom = 0;
     ret none[str]();
 }
@@ -106,6 +160,15 @@ pub fun begin(ctx: *Context, in: input.Input, sw: f32, sh: f32) {
     ctx.seq = 0;
     ctx.hot = 0;
     ctx.oom = 0;
+
+    ctx.lx = 0.0::f32;
+    ctx.ly = 0.0::f32;
+    ctx.clip_x0 = 0.0::f32;
+    ctx.clip_y0 = 0.0::f32;
+    ctx.clip_x1 = sw;
+    ctx.clip_y1 = sh;
+    ctx.clip_sp = 0;
+    ctx.org_sp = 0;
 
     draw.reset(?ctx.dl);
 }
@@ -156,6 +219,127 @@ fun record(ctx: *Context, e: Option[str]) {
     if (e.has_value) { ctx.oom = 1; }
 }
 
+# maxf: the larger of two f32 values.
+fun maxf(a: f32, b: f32) f32 {
+    if (a > b) { ret a; }
+    ret b;
+}
+
+# minf: the smaller of two f32 values.
+fun minf(a: f32, b: f32) f32 {
+    if (a < b) { ret a; }
+    ret b;
+}
+
+# push_clip: intersect the active clip rect with (x0,y0,x1,y1) and push the old
+# one. quads emitted until the matching pop_clip are clipped to the intersection.
+# beyond CLIP_DEPTH nesting the old rect is not saved but depth still balances.
+# ---
+# ctx: context
+# x0:  clip left in screen pixels
+# y0:  clip top in screen pixels
+# x1:  clip right in screen pixels
+# y1:  clip bottom in screen pixels
+pub fun push_clip(ctx: *Context, x0: f32, y0: f32, x1: f32, y1: f32) {
+    if (ctx.clip_sp < CLIP_DEPTH) {
+        ctx.clip_x0s[ctx.clip_sp] = ctx.clip_x0;
+        ctx.clip_y0s[ctx.clip_sp] = ctx.clip_y0;
+        ctx.clip_x1s[ctx.clip_sp] = ctx.clip_x1;
+        ctx.clip_y1s[ctx.clip_sp] = ctx.clip_y1;
+    }
+    ctx.clip_sp = ctx.clip_sp + 1;
+
+    ctx.clip_x0 = maxf(ctx.clip_x0, x0);
+    ctx.clip_y0 = maxf(ctx.clip_y0, y0);
+    ctx.clip_x1 = minf(ctx.clip_x1, x1);
+    ctx.clip_y1 = minf(ctx.clip_y1, y1);
+    if (ctx.clip_x1 < ctx.clip_x0) { ctx.clip_x1 = ctx.clip_x0; }
+    if (ctx.clip_y1 < ctx.clip_y0) { ctx.clip_y1 = ctx.clip_y0; }
+}
+
+# pop_clip: restore the clip rect saved by the matching push_clip.
+# ---
+# ctx: context
+pub fun pop_clip(ctx: *Context) {
+    if (ctx.clip_sp == 0) { ret; }
+    ctx.clip_sp = ctx.clip_sp - 1;
+    if (ctx.clip_sp < CLIP_DEPTH) {
+        ctx.clip_x0 = ctx.clip_x0s[ctx.clip_sp];
+        ctx.clip_y0 = ctx.clip_y0s[ctx.clip_sp];
+        ctx.clip_x1 = ctx.clip_x1s[ctx.clip_sp];
+        ctx.clip_y1 = ctx.clip_y1s[ctx.clip_sp];
+    }
+}
+
+# push_origin: set the local origin to (nx, ny), saving the old one.
+fun push_origin(ctx: *Context, nx: f32, ny: f32) {
+    if (ctx.org_sp < CLIP_DEPTH) {
+        ctx.org_xs[ctx.org_sp] = ctx.lx;
+        ctx.org_ys[ctx.org_sp] = ctx.ly;
+    }
+    ctx.org_sp = ctx.org_sp + 1;
+    ctx.lx = nx;
+    ctx.ly = ny;
+}
+
+# pop_origin: restore the local origin saved by the matching push_origin.
+fun pop_origin(ctx: *Context) {
+    if (ctx.org_sp == 0) { ret; }
+    ctx.org_sp = ctx.org_sp - 1;
+    if (ctx.org_sp < CLIP_DEPTH) {
+        ctx.lx = ctx.org_xs[ctx.org_sp];
+        ctx.ly = ctx.org_ys[ctx.org_sp];
+    }
+}
+
+# input_visible: whether screen point (x, y) lies inside the active clip rect.
+# widgets use it (with the cursor) so clipped-out rows never become hot.
+# ---
+# ctx: context
+# x:   screen x in pixels
+# y:   screen y in pixels
+# ret: 1 if the point is inside the active clip rect, else 0
+pub fun input_visible(ctx: *Context, x: f32, y: f32) u8 {
+    if (x >= ctx.clip_x0 && x < ctx.clip_x1 && y >= ctx.clip_y0 && y < ctx.clip_y1) { ret 1; }
+    ret 0;
+}
+
+# emit: shift a textured quad by the local origin, clip it to the active rect with
+# its uvs interpolated across the surviving fraction, and push it. quads fully
+# outside the clip are dropped; zero-extent axes keep their uvs unchanged.
+fun emit(ctx: *Context, x0: f32, y0: f32, x1: f32, y1: f32, u0: f32, v0: f32, u1: f32, v1: f32, c: draw.Color) {
+    val sx0: f32 = x0 + ctx.lx;
+    val sy0: f32 = y0 + ctx.ly;
+    val sx1: f32 = x1 + ctx.lx;
+    val sy1: f32 = y1 + ctx.ly;
+
+    if (sx1 <= ctx.clip_x0 || sx0 >= ctx.clip_x1) { ret; }
+    if (sy1 <= ctx.clip_y0 || sy0 >= ctx.clip_y1) { ret; }
+
+    val nx0: f32 = maxf(sx0, ctx.clip_x0);
+    val ny0: f32 = maxf(sy0, ctx.clip_y0);
+    val nx1: f32 = minf(sx1, ctx.clip_x1);
+    val ny1: f32 = minf(sy1, ctx.clip_y1);
+
+    var nu0: f32 = u0;
+    var nu1: f32 = u1;
+    val w: f32 = sx1 - sx0;
+    if (w > 0.0::f32) {
+        nu0 = u0 + (u1 - u0) * (nx0 - sx0) / w;
+        nu1 = u0 + (u1 - u0) * (nx1 - sx0) / w;
+    }
+
+    var nv0: f32 = v0;
+    var nv1: f32 = v1;
+    val h: f32 = sy1 - sy0;
+    if (h > 0.0::f32) {
+        nv0 = v0 + (v1 - v0) * (ny0 - sy0) / h;
+        nv1 = v0 + (v1 - v0) * (ny1 - sy0) / h;
+    }
+
+    record(ctx, draw.push_quad(?ctx.dl, nx0, ny0, nx1, ny1, nu0, nv0, nu1, nv1, c));
+}
+
 # quad: emit a solid-color rectangle sampling the atlas white cell.
 # ---
 # ctx: context
@@ -168,7 +352,7 @@ pub fun quad(ctx: *Context, x0: f32, y0: f32, x1: f32, y1: f32, c: draw.Color) {
     var wu: f32;
     var wv: f32;
     font.white_uv(?wu, ?wv);
-    record(ctx, draw.push_quad(?ctx.dl, x0, y0, x1, y1, wu, wv, wu, wv, c));
+    emit(ctx, x0, y0, x1, y1, wu, wv, wu, wv, c);
 }
 
 # glyph: emit one character cell at (x, y), tinted by c.
@@ -184,7 +368,7 @@ pub fun glyph(ctx: *Context, ch: u8, x: f32, y: f32, c: draw.Color) {
     var u1: f32;
     var v1: f32;
     font.glyph_uv(ch, ?u0, ?v0, ?u1, ?v1);
-    record(ctx, draw.push_quad(?ctx.dl, x, y, x + font.GLYPH_W, y + font.GLYPH_H, u0, v0, u1, v1, c));
+    emit(ctx, x, y, x + font.GLYPH_W, y + font.GLYPH_H, u0, v0, u1, v1, c);
 }
 
 # text_at: draw a string starting at (x, y), advancing one glyph per character.
@@ -202,6 +386,65 @@ pub fun text_at(ctx: *Context, s: str, x: f32, y: f32, c: draw.Color) {
         px = px + font.GLYPH_W;
         i = i + 1;
     }
+}
+
+# Surface: a scrolled, clipped local drawing region returned by begin_surface.
+# ---
+# x:        region left in screen pixels
+# y:        region top in screen pixels
+# w:        region width in pixels
+# h:        region height in pixels
+# local_mx: cursor x expressed in the region's local content coordinates
+# local_my: cursor y expressed in the region's local content coordinates
+# inside:   1 if the cursor is inside the (clipped) region, else 0
+pub rec Surface {
+    x:        f32;
+    y:        f32;
+    w:        f32;
+    h:        f32;
+    local_mx: f32;
+    local_my: f32;
+    inside:   u8;
+}
+
+# begin_surface: open a clipped sub-region with its own scrolled local origin.
+#
+# content drawn at local (cx, cy) lands at screen (x - scroll_x + cx,
+# y - scroll_y + cy) and is clipped to the region. the returned Surface reports
+# the cursor in local content coordinates and whether it is inside the region;
+# the consumer hit-tests its own content with those plus input pressed/released.
+# pair every begin_surface with an end_surface.
+# ---
+# ctx:      context
+# x:        region left in screen pixels
+# y:        region top in screen pixels
+# w:        region width in pixels
+# h:        region height in pixels
+# scroll_x: content offset scrolled out to the left in pixels
+# scroll_y: content offset scrolled out above in pixels
+# ret:      the surface descriptor
+pub fun begin_surface(ctx: *Context, x: f32, y: f32, w: f32, h: f32, scroll_x: f32, scroll_y: f32) Surface {
+    push_clip(ctx, x, y, x + w, y + h);
+    push_origin(ctx, x - scroll_x, y - scroll_y);
+
+    var s: Surface;
+    s.x = x;
+    s.y = y;
+    s.w = w;
+    s.h = h;
+    s.local_mx = ctx.in.mx - ctx.lx;
+    s.local_my = ctx.in.my - ctx.ly;
+    s.inside = input_visible(ctx, ctx.in.mx, ctx.in.my);
+    ret s;
+}
+
+# end_surface: close the region opened by begin_surface, restoring clip and origin.
+# ---
+# ctx:  context
+# surf: the surface returned by begin_surface
+pub fun end_surface(ctx: *Context, surf: Surface) {
+    pop_origin(ctx);
+    pop_clip(ctx);
 }
 
 test "context: begin resets seq and draw list, next_id increments" {
@@ -283,6 +526,153 @@ test "context: text_at emits a quad per character" {
     # two glyphs, six verts each
     if (draw_count(?ctx) != 12) { ret 1; }
     if (ok(?ctx) != 1) { ret 1; }
+
+    free(?ctx);
+    ret 0;
+}
+
+test "context: push_clip intersects nested rects and pop restores them" {
+    var a: allo.Allocator;
+    page.make(?a);
+    var ctx: Context;
+    if (init(?ctx, ?a).has_value) { ret 1; }
+
+    var in: input.Input;
+    in.mx = 0.0::f32; in.my = 0.0::f32; in.down = 0; in.prev_down = 0;
+    begin(?ctx, in, 100.0::f32, 100.0::f32);
+
+    push_clip(?ctx, 0.0::f32, 0.0::f32, 60.0::f32, 60.0::f32);
+    push_clip(?ctx, 40.0::f32, 40.0::f32, 100.0::f32, 100.0::f32);
+    if (ctx.clip_x0 != 40.0::f32) { ret 1; }
+    if (ctx.clip_y0 != 40.0::f32) { ret 1; }
+    if (ctx.clip_x1 != 60.0::f32) { ret 1; }
+    if (ctx.clip_y1 != 60.0::f32) { ret 1; }
+
+    pop_clip(?ctx);
+    if (ctx.clip_x1 != 60.0::f32) { ret 1; }
+    if (ctx.clip_x0 != 0.0::f32) { ret 1; }
+
+    pop_clip(?ctx);
+    if (ctx.clip_x1 != 100.0::f32) { ret 1; }
+    if (ctx.clip_sp != 0) { ret 1; }
+
+    free(?ctx);
+    ret 0;
+}
+
+test "context: clip halves a glyph and interpolates its uvs" {
+    var a: allo.Allocator;
+    page.make(?a);
+    var ctx: Context;
+    if (init(?ctx, ?a).has_value) { ret 1; }
+
+    var in: input.Input;
+    in.mx = 0.0::f32; in.my = 0.0::f32; in.down = 0; in.prev_down = 0;
+    begin(?ctx, in, 100.0::f32, 100.0::f32);
+
+    val white: draw.Color = draw.rgba(1.0::f32, 1.0::f32, 1.0::f32, 1.0::f32);
+    # clip to the left half of an 8px glyph cell
+    push_clip(?ctx, 0.0::f32, 0.0::f32, 4.0::f32, 100.0::f32);
+    glyph(?ctx, 'A', 0.0::f32, 0.0::f32, white);
+    if (draw_count(?ctx) != 6) { ret 1; }
+
+    val p: *draw.Vert = draw_verts(?ctx);
+    # right edge clipped from 8 to 4
+    if (p[1].x != 4.0::f32) { ret 1; }
+    # left edge and its u untouched
+    if (p[0].x != 0.0::f32) { ret 1; }
+
+    var u0: f32; var v0: f32; var u1: f32; var v1: f32;
+    font.glyph_uv('A', ?u0, ?v0, ?u1, ?v1);
+    if (p[0].u != u0) { ret 1; }
+    # clipped edge u interpolated to the cell midpoint
+    if (p[1].u != (u0 + u1) / 2.0::f32) { ret 1; }
+
+    # a quad fully outside the clip is dropped entirely
+    quad(?ctx, 50.0::f32, 0.0::f32, 60.0::f32, 10.0::f32, white);
+    if (draw_count(?ctx) != 6) { ret 1; }
+
+    pop_clip(?ctx);
+    free(?ctx);
+    ret 0;
+}
+
+test "context: input_visible follows the clip stack" {
+    var a: allo.Allocator;
+    page.make(?a);
+    var ctx: Context;
+    if (init(?ctx, ?a).has_value) { ret 1; }
+
+    var in: input.Input;
+    in.mx = 0.0::f32; in.my = 0.0::f32; in.down = 0; in.prev_down = 0;
+    begin(?ctx, in, 100.0::f32, 100.0::f32);
+
+    if (input_visible(?ctx, 50.0::f32, 50.0::f32) != 1) { ret 1; }
+    if (input_visible(?ctx, 150.0::f32, 50.0::f32) != 0) { ret 1; }
+
+    push_clip(?ctx, 0.0::f32, 0.0::f32, 40.0::f32, 40.0::f32);
+    if (input_visible(?ctx, 30.0::f32, 30.0::f32) != 1) { ret 1; }
+    if (input_visible(?ctx, 50.0::f32, 50.0::f32) != 0) { ret 1; }
+    pop_clip(?ctx);
+    if (input_visible(?ctx, 50.0::f32, 50.0::f32) != 1) { ret 1; }
+
+    free(?ctx);
+    ret 0;
+}
+
+test "context: begin_surface maps the cursor to local coords and clips content" {
+    var a: allo.Allocator;
+    page.make(?a);
+    var ctx: Context;
+    if (init(?ctx, ?a).has_value) { ret 1; }
+
+    var in: input.Input;
+    in.mx = 60.0::f32; in.my = 70.0::f32; in.down = 0; in.prev_down = 0;
+    begin(?ctx, in, 200.0::f32, 200.0::f32);
+
+    val white: draw.Color = draw.rgba(1.0::f32, 1.0::f32, 1.0::f32, 1.0::f32);
+    # region at (50,50) size 100, scrolled (10,20): local origin lands at (40,30)
+    val s: Surface = begin_surface(?ctx, 50.0::f32, 50.0::f32, 100.0::f32, 100.0::f32, 10.0::f32, 20.0::f32);
+    if (s.local_mx != 20.0::f32) { ret 1; }
+    if (s.local_my != 40.0::f32) { ret 1; }
+    if (s.inside != 1) { ret 1; }
+
+    # content at local (20,30)-(40,50) lands at screen (60,60)-(80,80), inside the clip
+    quad(?ctx, 20.0::f32, 30.0::f32, 40.0::f32, 50.0::f32, white);
+    if (draw_count(?ctx) != 6) { ret 1; }
+    val p: *draw.Vert = draw_verts(?ctx);
+    if (p[0].x != 60.0::f32) { ret 1; }
+    if (p[0].y != 60.0::f32) { ret 1; }
+    if (p[2].x != 80.0::f32) { ret 1; }
+    if (p[2].y != 80.0::f32) { ret 1; }
+
+    # content scrolled past the region is dropped
+    quad(?ctx, 200.0::f32, 200.0::f32, 210.0::f32, 210.0::f32, white);
+    if (draw_count(?ctx) != 6) { ret 1; }
+
+    end_surface(?ctx, s);
+    if (ctx.clip_sp != 0) { ret 1; }
+    if (ctx.org_sp != 0) { ret 1; }
+    if (ctx.lx != 0.0::f32) { ret 1; }
+    if (ctx.clip_x1 != 200.0::f32) { ret 1; }
+
+    free(?ctx);
+    ret 0;
+}
+
+test "context: begin_surface reports the cursor outside its region" {
+    var a: allo.Allocator;
+    page.make(?a);
+    var ctx: Context;
+    if (init(?ctx, ?a).has_value) { ret 1; }
+
+    var in: input.Input;
+    in.mx = 60.0::f32; in.my = 70.0::f32; in.down = 0; in.prev_down = 0;
+    begin(?ctx, in, 200.0::f32, 200.0::f32);
+
+    val s: Surface = begin_surface(?ctx, 0.0::f32, 0.0::f32, 10.0::f32, 10.0::f32, 0.0::f32, 0.0::f32);
+    if (s.inside != 0) { ret 1; }
+    end_surface(?ctx, s);
 
     free(?ctx);
     ret 0;
