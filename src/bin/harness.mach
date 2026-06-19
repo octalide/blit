@@ -13,7 +13,7 @@ use page:  std.allocator.page;
 
 use blit;
 
-$main.symbol = "main";
+`symbol("main")`
 fun main(argc: i64, argv: **u8) i64 {
     var a: allo.Allocator;
     page.make(?a);
@@ -73,10 +73,10 @@ fun main(argc: i64, argv: **u8) i64 {
 
     blit.context.end(?ctx);
 
-    print.printf("blit %s: %d vertices, ok=%d\n",
+    print.printf("blit {}: {} vertices, ok={}\n",
                  blit.VERSION,
-                 blit.context.draw_count(?ctx)::i64,
-                 blit.context.ok(?ctx)::i64);
+                 blit.context.draw_count(?ctx),
+                 blit.context.ok(?ctx)::u64);
 
     blit.context.free(?ctx);
     ret 0;
