@@ -40,6 +40,9 @@ fun c_track()         draw.Color { ret draw.rgba(0.15::f32, 0.15::f32, 0.18::f32
 fun c_handle()        draw.Color { ret draw.rgba(0.55::f32, 0.55::f32, 0.65::f32, 1.0::f32); }
 fun c_handle_active() draw.Color { ret draw.rgba(0.78::f32, 0.78::f32, 0.92::f32, 1.0::f32); }
 fun c_check_fill()    draw.Color { ret draw.rgba(0.55::f32, 0.85::f32, 0.55::f32, 1.0::f32); }
+fun c_title()         draw.Color { ret draw.rgba(0.20::f32, 0.20::f32, 0.26::f32, 1.0::f32); }
+fun c_title_hot()     draw.Color { ret draw.rgba(0.28::f32, 0.28::f32, 0.36::f32, 1.0::f32); }
+fun c_window()        draw.Color { ret draw.rgba(0.10::f32, 0.10::f32, 0.12::f32, 0.95::f32); }
 
 # clampf: clamp v to [lo, hi].
 fun clampf(v: f32, lo: f32, hi: f32) f32 {
@@ -246,6 +249,214 @@ pub fun slider_f(ctx: *context.Context, label: str, v: *f32, lo: f32, hi: f32) b
     ret changed;
 }
 
+# dropdown: an accordion select — shows the current option and, while open, lays
+# out the options as selectable rows beneath it.
+#
+# clicking the header toggles the open state (persisted on the context, so only
+# one dropdown is open at a time). clicking an option sets @selected and closes.
+# the open rows advance the layout cursor, pushing later widgets down rather than
+# overlaying them, which keeps it free of immediate-mode overlay ordering.
+# ---
+# ctx:      context
+# label:    text drawn on the left of the header
+# selected: pointer to the selected index, updated in place
+# options:  pointer to an array of option strings (pass ?opts[0])
+# count:    number of options
+# ret:      1 if the selection changed this frame, else 0
+pub fun dropdown(ctx: *context.Context, label: str, selected: *usize, options: *str, count: usize) u8 {
+    val id: u64 = context.next_id(ctx);
+    val x0: f32 = ctx.cx;
+    val y0: f32 = ctx.cy;
+    val h:  f32 = row_h();
+    val x1: f32 = ctx.cx + ctx.pw;
+    val y1: f32 = y0 + h;
+
+    val hovered: u8 = input.in_rect(ctx.in, x0, y0, x1, y1);
+    val vis:     u8 = context.input_visible(ctx, ctx.in.mx, ctx.in.my);
+    if (hovered != 0 && vis != 0) { ctx.hot = id; }
+    if (hovered != 0 && vis != 0 && input.pressed(ctx.in) != 0) { ctx.active = id; }
+    if (ctx.active == id && input.released(ctx.in) != 0 && hovered != 0 && vis != 0) {
+        if (ctx.open_dropdown == id) { ctx.open_dropdown = 0; }
+        or { ctx.open_dropdown = id; }
+    }
+
+    var bg: draw.Color = c_btn();
+    if (ctx.hot == id) { bg = c_btn_hot(); }
+    if (ctx.open_dropdown == id) { bg = c_btn_active(); }
+    context.quad(ctx, x0, y0, x1, y1, bg);
+
+    val ty: f32 = y0 + (h - font.GLYPH_H) / 2.0::f32;
+    context.text_at(ctx, label, x0 + PAD, ty, c_text());
+    if (@selected < count) {
+        val cur: str = options[@selected];
+        val cw:  f32 = font.text_width(cur);
+        context.text_at(ctx, cur, x1 - PAD - cw, ty, c_text());
+    }
+
+    advance(ctx, h);
+
+    var changed: u8 = 0;
+    if (ctx.open_dropdown == id) {
+        var i: usize = 0;
+        for (i < count) {
+            val oid: u64 = context.next_id(ctx);
+            val ox0: f32 = ctx.cx;
+            val oy0: f32 = ctx.cy;
+            val ox1: f32 = ctx.cx + ctx.pw;
+            val oy1: f32 = oy0 + h;
+
+            val ohov: u8 = input.in_rect(ctx.in, ox0, oy0, ox1, oy1);
+            val ovis: u8 = context.input_visible(ctx, ctx.in.mx, ctx.in.my);
+            if (ohov != 0 && ovis != 0) { ctx.hot = oid; }
+            if (ohov != 0 && ovis != 0 && input.pressed(ctx.in) != 0) { ctx.active = oid; }
+            if (ctx.active == oid && input.released(ctx.in) != 0 && ohov != 0 && ovis != 0) {
+                @selected = i;
+                ctx.open_dropdown = 0;
+                changed = 1;
+            }
+
+            var obg: draw.Color = c_track();
+            if (ctx.hot == oid) { obg = c_btn_hot(); }
+            context.quad(ctx, ox0, oy0, ox1, oy1, obg);
+            context.text_at(ctx, options[i], ox0 + PAD, oy0 + (h - font.GLYPH_H) / 2.0::f32, c_text());
+
+            advance(ctx, h);
+            i = i + 1;
+        }
+    }
+    ret changed;
+}
+
+# region_clicked: hit-test an arbitrary screen rect with button click semantics.
+#
+# returns 1 on the frame the primary button releases inside the rect after being
+# pressed inside it. emits no geometry — the consumer draws the affordance (an
+# icon, a corner toggle) itself. respects the active clip stack.
+# ---
+# ctx: context
+# x0:  left x in screen pixels
+# y0:  top y in screen pixels
+# x1:  right x in screen pixels
+# y1:  bottom y in screen pixels
+# ret: 1 if the rect was clicked this frame, else 0
+pub fun region_clicked(ctx: *context.Context, x0: f32, y0: f32, x1: f32, y1: f32) u8 {
+    val id: u64 = context.next_id(ctx);
+    val hovered: u8 = input.in_rect(ctx.in, x0, y0, x1, y1);
+    val vis:     u8 = context.input_visible(ctx, ctx.in.mx, ctx.in.my);
+    if (hovered != 0 && vis != 0) { ctx.hot = id; }
+    if (hovered != 0 && vis != 0 && input.pressed(ctx.in) != 0) { ctx.active = id; }
+
+    var clicked: u8 = 0;
+    if (ctx.active == id && input.released(ctx.in) != 0 && hovered != 0 && vis != 0) {
+        clicked = 1;
+    }
+    ret clicked;
+}
+
+# Window: consumer-owned state for a draggable, collapsible titled window.
+# ---
+# x:     window left in screen pixels, updated while dragging the titlebar
+# y:     window top in screen pixels, updated while dragging the titlebar
+# w:     window width in pixels
+# open:  1 if the body is expanded, 0 if collapsed to the titlebar
+# title: titlebar text
+pub rec Window {
+    x:     f32;
+    y:     f32;
+    w:     f32;
+    open:  u8;
+    title: str;
+}
+
+# begin_window: draw a window's titlebar and, when open, start its body column.
+#
+# the titlebar drags the window (press and move updates win.x/win.y) and carries a
+# collapse box on the left that toggles win.open. when open, the layout cursor is
+# placed below the titlebar so the consumer's widgets fill the body, which
+# end_window grows to enclose. multiple windows coexist by call order. returns a
+# handle to pass to end_window.
+# ---
+# ctx: context
+# win: pointer to the window state, mutated by dragging and collapsing
+# ret: a handle for end_window
+pub fun begin_window(ctx: *context.Context, win: *Window) usize {
+    val th: f32 = row_h();
+    val drag_id: u64 = context.next_id(ctx);
+    val col_id:  u64 = context.next_id(ctx);
+
+    val bx1: f32 = win.x + th;
+    val ty0: f32 = win.y;
+    val ty1: f32 = win.y + th;
+    val dx1: f32 = win.x + win.w;
+    val vis: u8 = context.input_visible(ctx, ctx.in.mx, ctx.in.my);
+
+    val chov: u8 = input.in_rect(ctx.in, win.x, ty0, bx1, ty1);
+    if (chov != 0 && vis != 0) { ctx.hot = col_id; }
+    if (chov != 0 && vis != 0 && input.pressed(ctx.in) != 0) { ctx.active = col_id; }
+    if (ctx.active == col_id && input.released(ctx.in) != 0 && chov != 0 && vis != 0) {
+        if (win.open == 0) { win.open = 1; } or { win.open = 0; }
+    }
+
+    val dhov: u8 = input.in_rect(ctx.in, bx1, ty0, dx1, ty1);
+    if (dhov != 0 && vis != 0) { ctx.hot = drag_id; }
+    if (dhov != 0 && vis != 0 && input.pressed(ctx.in) != 0) {
+        ctx.active = drag_id;
+        ctx.drag_off_x = ctx.in.mx - win.x;
+        ctx.drag_off_y = ctx.in.my - win.y;
+    }
+    if (ctx.active == drag_id && ctx.in.down != 0) {
+        win.x = ctx.in.mx - ctx.drag_off_x;
+        win.y = ctx.in.my - ctx.drag_off_y;
+    }
+
+    var tbg: draw.Color = c_title();
+    if (ctx.hot == drag_id || ctx.hot == col_id) { tbg = c_title_hot(); }
+    context.quad(ctx, win.x, win.y, win.x + win.w, win.y + th, tbg);
+
+    val gy: f32 = win.y + (th - font.GLYPH_H) / 2.0::f32;
+    var gch: u8 = '+';
+    if (win.open != 0) { gch = '-'; }
+    context.glyph(ctx, gch, win.x + PAD, gy, c_text());
+    context.text_at(ctx, win.title, win.x + th + PAD, gy, c_text());
+
+    if (win.open == 0) { ret 0; }
+
+    ctx.ox = win.x;
+    ctx.oy = win.y + th;
+    ctx.cx = win.x;
+    ctx.cy = win.y + th;
+    ctx.pw = win.w;
+
+    val handle: usize = context.draw_count(ctx);
+    context.quad(ctx, win.x, win.y + th, win.x + win.w, win.y + th, c_window());
+    ret handle;
+}
+
+# end_window: grow the window body to enclose its widgets, like end_panel. a
+# no-op when the window is collapsed or the body placeholder was never emitted.
+# ---
+# ctx:    context
+# win:    pointer to the window state
+# handle: the value returned by begin_window
+pub fun end_window(ctx: *context.Context, win: *Window, handle: usize) {
+    if (win.open == 0) { ret; }
+    if (handle + 6 > context.draw_count(ctx)) { ret; }
+
+    val th: f32 = row_h();
+    val x0: f32 = win.x;
+    val y0: f32 = win.y + th;
+    val x1: f32 = win.x + win.w;
+    val y1: f32 = ctx.cy + PAD;
+
+    val p: *draw.Vert = context.draw_verts(ctx);
+    p[handle + 0].x = x0; p[handle + 0].y = y0;
+    p[handle + 1].x = x1; p[handle + 1].y = y0;
+    p[handle + 2].x = x1; p[handle + 2].y = y1;
+    p[handle + 3].x = x0; p[handle + 3].y = y0;
+    p[handle + 4].x = x1; p[handle + 4].y = y1;
+    p[handle + 5].x = x0; p[handle + 5].y = y1;
+}
+
 test "widget: text advances the cursor by one row" {
     var a: allo.Allocator;
     page.make(?a);
@@ -391,6 +602,143 @@ test "widget: slider maps the cursor linearly across the track" {
     slider_f(?ctx, "x", ?v, 0.0::f32, 10.0::f32);
     if (v != 10.0::f32) { ret 1; }
     context.end(?ctx);
+
+    context.free(?ctx);
+    ret 0;
+}
+
+test "widget: dropdown opens on click and selects an option" {
+    var a: allo.Allocator;
+    page.make(?a);
+    var ctx: context.Context;
+    if (context.init(?ctx, ?a).has_value) { ret 1; }
+
+    var opts: [3]str;
+    opts[0] = "a";
+    opts[1] = "bb";
+    opts[2] = "ccc";
+    var sel: usize = 0;
+
+    var in: input.Input;
+    in.prev_down = 0;
+
+    # frame 1: press on the header
+    in.mx = 10.0::f32; in.my = 8.0::f32; in.down = 1;
+    context.begin(?ctx, in, 200.0::f32, 200.0::f32);
+    begin_panel(?ctx, 0.0::f32, 0.0::f32, 100.0::f32);
+    dropdown(?ctx, "pick", ?sel, ?opts[0], 3);
+    context.end(?ctx);
+
+    # frame 2: release over the header -> opens, no selection change
+    in.down = 0;
+    context.begin(?ctx, in, 200.0::f32, 200.0::f32);
+    begin_panel(?ctx, 0.0::f32, 0.0::f32, 100.0::f32);
+    if (dropdown(?ctx, "pick", ?sel, ?opts[0], 3) != 0) { ret 1; }
+    if (ctx.open_dropdown != 1) { ret 1; }
+    context.end(?ctx);
+
+    # frame 3: press on the second option row (y in [40, 56))
+    in.mx = 10.0::f32; in.my = 48.0::f32; in.down = 1;
+    context.begin(?ctx, in, 200.0::f32, 200.0::f32);
+    begin_panel(?ctx, 0.0::f32, 0.0::f32, 100.0::f32);
+    dropdown(?ctx, "pick", ?sel, ?opts[0], 3);
+    context.end(?ctx);
+
+    # frame 4: release over it -> selects index 1 and closes
+    in.down = 0;
+    context.begin(?ctx, in, 200.0::f32, 200.0::f32);
+    begin_panel(?ctx, 0.0::f32, 0.0::f32, 100.0::f32);
+    if (dropdown(?ctx, "pick", ?sel, ?opts[0], 3) != 1) { ret 1; }
+    if (sel != 1) { ret 1; }
+    if (ctx.open_dropdown != 0) { ret 1; }
+    context.end(?ctx);
+
+    context.free(?ctx);
+    ret 0;
+}
+
+test "widget: region_clicked fires on release inside after press" {
+    var a: allo.Allocator;
+    page.make(?a);
+    var ctx: context.Context;
+    if (context.init(?ctx, ?a).has_value) { ret 1; }
+
+    var in: input.Input;
+    in.prev_down = 0;
+
+    # frame 1: press inside the rect
+    in.mx = 50.0::f32; in.my = 50.0::f32; in.down = 1;
+    context.begin(?ctx, in, 200.0::f32, 200.0::f32);
+    if (region_clicked(?ctx, 40.0::f32, 40.0::f32, 60.0::f32, 60.0::f32) != 0) { ret 1; }
+    context.end(?ctx);
+
+    # frame 2: release inside -> click
+    in.down = 0;
+    context.begin(?ctx, in, 200.0::f32, 200.0::f32);
+    if (region_clicked(?ctx, 40.0::f32, 40.0::f32, 60.0::f32, 60.0::f32) != 1) { ret 1; }
+    context.end(?ctx);
+
+    # a clipped-away rect cannot be clicked
+    in.down = 1;
+    context.begin(?ctx, in, 200.0::f32, 200.0::f32);
+    context.push_clip(?ctx, 0.0::f32, 0.0::f32, 10.0::f32, 10.0::f32);
+    if (region_clicked(?ctx, 40.0::f32, 40.0::f32, 60.0::f32, 60.0::f32) != 0) { ret 1; }
+    context.pop_clip(?ctx);
+    context.end(?ctx);
+
+    context.free(?ctx);
+    ret 0;
+}
+
+test "widget: window drags by the titlebar and collapses" {
+    var a: allo.Allocator;
+    page.make(?a);
+    var ctx: context.Context;
+    if (context.init(?ctx, ?a).has_value) { ret 1; }
+
+    var win: Window;
+    win.x = 50.0::f32; win.y = 50.0::f32; win.w = 120.0::f32; win.open = 1; win.title = "w";
+
+    var in: input.Input;
+    in.prev_down = 0;
+
+    # frame 1: press on the drag region of the titlebar (right of the collapse box)
+    in.mx = 100.0::f32; in.my = 58.0::f32; in.down = 1;
+    context.begin(?ctx, in, 400.0::f32, 400.0::f32);
+    val h1: usize = begin_window(?ctx, ?win);
+    end_window(?ctx, ?win, h1);
+    context.end(?ctx);
+
+    # frame 2: move while held -> window follows the cursor
+    in.mx = 150.0::f32; in.my = 90.0::f32; in.down = 1;
+    context.begin(?ctx, in, 400.0::f32, 400.0::f32);
+    val h2: usize = begin_window(?ctx, ?win);
+    end_window(?ctx, ?win, h2);
+    context.end(?ctx);
+    if (win.x != 100.0::f32) { ret 1; }
+    if (win.y != 82.0::f32) { ret 1; }
+
+    # frame 3: release to drop the drag
+    in.down = 0;
+    context.begin(?ctx, in, 400.0::f32, 400.0::f32);
+    val h3: usize = begin_window(?ctx, ?win);
+    end_window(?ctx, ?win, h3);
+    context.end(?ctx);
+
+    # frame 4: press the collapse box (now at [100,116] x [82,98])
+    in.mx = 108.0::f32; in.my = 90.0::f32; in.down = 1;
+    context.begin(?ctx, in, 400.0::f32, 400.0::f32);
+    val h4: usize = begin_window(?ctx, ?win);
+    end_window(?ctx, ?win, h4);
+    context.end(?ctx);
+
+    # frame 5: release over it -> collapses
+    in.down = 0;
+    context.begin(?ctx, in, 400.0::f32, 400.0::f32);
+    val h5: usize = begin_window(?ctx, ?win);
+    end_window(?ctx, ?win, h5);
+    context.end(?ctx);
+    if (win.open != 0) { ret 1; }
 
     context.free(?ctx);
     ret 0;
