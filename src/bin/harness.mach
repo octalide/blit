@@ -13,7 +13,7 @@ use page:  std.allocator.page;
 
 use blit;
 
-`symbol("main")`
+#[symbol("main")]
 fun main(argc: i64, argv: **u8) i64 {
     var a: allo.Allocator;
     page.make(?a);
