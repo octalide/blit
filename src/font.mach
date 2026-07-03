@@ -1,10 +1,10 @@
-# blit.font: an embedded 8x8 bitmap ASCII font and its texture atlas.
+# an embedded 8x8 bitmap ASCII font and its texture atlas
 #
 # the printable glyphs 32..126 plus one solid-white cell are packed into a fixed
 # RGBA8 atlas, built once into a process-lifetime buffer. each pixel is white rgb
 # with alpha 255 where the glyph (or white cell) is lit and alpha 0 elsewhere, so
-# the consumer's `aColor * texture(atlas, uv)` tints text and—by sampling the
-# white cell—fills solid quads through the same shader and texture.
+# the consumer's `aColor * texture(atlas, uv)` tints text and, by sampling the
+# white cell, fills solid quads through the same shader and texture.
 #
 # the embedded bitmaps are the public-domain font8x8 basic set (Daniel Hepper,
 # from Marcel Sondaar's IBM VGA fonts); each glyph is 8 row bytes, bit 0 leftmost.
@@ -22,31 +22,31 @@ use std.types.result.unwrap_ok;
 use allo: std.allocator;
 use page: std.allocator.page;
 
-# GLYPH_COUNT: number of embedded printable glyphs (ASCII 32..126).
+# number of embedded printable glyphs (ASCII 32..126)
 pub val GLYPH_COUNT: usize = 95;
 
-# ATLAS_COLS: glyph cells per atlas row.
+# glyph cells per atlas row
 val ATLAS_COLS: usize = 16;
 
-# GLYPH_PX: pixel width and height of one glyph cell.
+# pixel width and height of one glyph cell
 val GLYPH_PX: usize = 8;
 
-# WHITE_CELL: cell index of the dedicated solid-white cell (the 96th cell).
+# cell index of the dedicated solid-white cell (the 96th cell)
 val WHITE_CELL: usize = 95;
 
-# ATLAS_W: atlas width in pixels.
+# atlas width in pixels
 pub val ATLAS_W: usize = 128;
 
-# ATLAS_H: atlas height in pixels (6 rows of 16 cells hold 95 glyphs + white).
+# atlas height in pixels (6 rows of 16 cells hold 95 glyphs + white)
 pub val ATLAS_H: usize = 48;
 
-# GLYPH_W: advance width of one glyph in pixels.
+# advance width of one glyph in pixels
 pub val GLYPH_W: f32 = 8.0;
 
-# GLYPH_H: line height of one glyph in pixels.
+# line height of one glyph in pixels
 pub val GLYPH_H: f32 = 8.0;
 
-# FONT: 95 glyphs x 8 row bytes, bit 0 = leftmost column.
+# 95 glyphs x 8 row bytes, bit 0 = leftmost column
 val FONT: [760]u8 = [760]u8{
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  # U+0020 (space)
     0x18, 0x3C, 0x3C, 0x18, 0x18, 0x00, 0x18, 0x00,  # U+0021 (!)
@@ -145,10 +145,10 @@ val FONT: [760]u8 = [760]u8{
     0x6E, 0x3B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00   # U+007E (~)
 };
 
-# atlas_buf: process-lifetime RGBA8 atlas pixels, nil until build_atlas runs.
+# process-lifetime RGBA8 atlas pixels, nil until build_atlas runs
 var atlas_buf: *u8 = nil;
 
-# build_atlas: rasterize the embedded font into the RGBA8 atlas buffer.
+# rasterize the embedded font into the RGBA8 atlas buffer
 #
 # idempotent: a second call with an already-built atlas is a no-op. the buffer
 # lives for the process lifetime and is shared by every consumer.
@@ -164,7 +164,7 @@ pub fun build_atlas(a: *allo.Allocator) Option[str] {
     if (is_err[*u8, str](r)) { ret some[str]("font: atlas alloc failed"); }
     val buf: *u8 = unwrap_ok[*u8, str](r);
 
-    # white rgb everywhere with zero alpha — lit pixels turn alpha on below,
+    # white rgb everywhere with zero alpha, lit pixels turn alpha on below,
     # so linear filtering never bleeds a dark fringe into glyph edges
     var i: usize = 0;
     for (i < npx) {
@@ -213,14 +213,14 @@ pub fun build_atlas(a: *allo.Allocator) Option[str] {
     ret none[str]();
 }
 
-# atlas_pixels: pointer to the RGBA8 atlas (ATLAS_W * ATLAS_H * 4 bytes).
+# pointer to the RGBA8 atlas (ATLAS_W * ATLAS_H * 4 bytes)
 # ---
 # ret: atlas pixels, or nil if build_atlas has not run
 pub fun atlas_pixels() *u8 {
     ret atlas_buf;
 }
 
-# white_uv: atlas uv of the solid-white cell's center, for tinting solid quads.
+# atlas uv of the solid-white cell's center, for tinting solid quads
 # ---
 # u: receives the white u in [0, 1]
 # v: receives the white v in [0, 1]
@@ -231,7 +231,7 @@ pub fun white_uv(u: *f32, v: *f32) {
     @v = wy::f32 / ATLAS_H::f32;
 }
 
-# glyph_uv: atlas uv rect covering a character's 8x8 cell.
+# atlas uv rect covering a character's 8x8 cell
 #
 # non-printable characters (outside 32..126) map to the space glyph.
 # ---
@@ -251,7 +251,7 @@ pub fun glyph_uv(c: u8, u0: *f32, v0: *f32, u1: *f32, v1: *f32) {
     @v1 = ((row + 1) * GLYPH_PX)::f32 / ATLAS_H::f32;
 }
 
-# text_width: pixel width of a string laid out at one glyph advance per character.
+# pixel width of a string laid out at one glyph advance per character
 # ---
 # s:   string to measure
 # ret: width in pixels
