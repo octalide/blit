@@ -1,5 +1,5 @@
-# blit.context: the immediate-mode context — draw list, input, layout, and the
-# painter helpers widgets build on.
+# the immediate-mode context: draw list, input, layout, and the
+# painter helpers widgets build on
 #
 # the context owns the per-frame draw list and the current input, tracks a simple
 # top-to-bottom layout cursor, and assigns stable widget ids by call order. it is
@@ -9,7 +9,7 @@
 #
 # the painter also carries a CPU clip stack and a local-origin offset. every quad
 # is shifted by the local origin into screen space, then clipped to the active
-# rect — quads fully outside are dropped and partial ones are shrunk with their
+# rect; quads fully outside are dropped and partial ones are shrunk with their
 # uvs interpolated, so all clipping stays geometric and backend-agnostic. push a
 # sub-surface (begin_surface) to draw custom content in a scrolled local space.
 
@@ -24,10 +24,10 @@ use draw:  blit.draw;
 use input: blit.input;
 use font:  blit.font;
 
-# CLIP_DEPTH: maximum nesting of pushed clip rects and local origins.
+# maximum nesting of pushed clip rects and local origins
 pub val CLIP_DEPTH: usize = 16;
 
-# Context: immediate-mode UI state for one consumer.
+# immediate-mode UI state for one consumer
 # ---
 # dl:            draw list accumulated each frame
 # in:            input for the current frame
@@ -92,7 +92,7 @@ pub rec Context {
     oom:           u8;
 }
 
-# init: initialize a context and its draw list.
+# initialize a context and its draw list
 # ---
 # ctx: context to initialize
 # a:   allocator backing the draw list
@@ -131,15 +131,15 @@ pub fun init(ctx: *Context, a: *allo.Allocator) Option[str] {
     ret none[str]();
 }
 
-# free: release the context's draw list.
+# release the context's draw list
 # ---
 # ctx: context to free
 pub fun free(ctx: *Context) {
     draw.free(?ctx.dl);
 }
 
-# begin: start a frame — store input (carrying the previous button state into
-# prev_down), clear the draw list, and reset ids and layout.
+# start a frame: store input (carrying the previous button state into
+# prev_down), clear the draw list, and reset ids and layout
 # ---
 # ctx: context
 # in:  this frame's input (consumer sets mx/my/down; prev_down is managed here)
@@ -173,14 +173,14 @@ pub fun begin(ctx: *Context, in: input.Input, sw: f32, sh: f32) {
     draw.reset(?ctx.dl);
 }
 
-# end: finish a frame — drop the active widget once the button is released.
+# finish a frame: drop the active widget once the button is released
 # ---
 # ctx: context
 pub fun end(ctx: *Context) {
     if (ctx.in.down == 0) { ctx.active = 0; }
 }
 
-# next_id: allocate the next widget id for this frame (stable while call order is).
+# allocate the next widget id for this frame (stable while call order is)
 # ---
 # ctx: context
 # ret: a nonzero widget id
@@ -189,7 +189,7 @@ pub fun next_id(ctx: *Context) u64 {
     ret ctx.seq;
 }
 
-# ok: whether the frame's geometry is complete (no draw-list growth failed).
+# whether the frame's geometry is complete (no draw-list growth failed)
 # ---
 # ctx: context
 # ret: 1 if no allocation failed this frame, else 0
@@ -198,7 +198,7 @@ pub fun ok(ctx: *Context) u8 {
     ret 1;
 }
 
-# draw_verts: pointer to the frame's vertices, for the consumer to upload.
+# pointer to the frame's vertices, for the consumer to upload
 # ---
 # ctx: context
 # ret: pointer to the first vertex
@@ -206,7 +206,7 @@ pub fun draw_verts(ctx: *Context) *draw.Vert {
     ret draw.data(?ctx.dl);
 }
 
-# draw_count: number of vertices to draw this frame.
+# number of vertices to draw this frame
 # ---
 # ctx: context
 # ret: vertex count
@@ -214,25 +214,26 @@ pub fun draw_count(ctx: *Context) usize {
     ret draw.count(?ctx.dl);
 }
 
-# record: fold a draw-list result into the context's oom flag.
+# fold a draw-list result into the context's oom flag
 fun record(ctx: *Context, e: Option[str]) {
     if (e.has_value) { ctx.oom = 1; }
 }
 
-# maxf: the larger of two f32 values.
+# the larger of two f32 values
 fun maxf(a: f32, b: f32) f32 {
     if (a > b) { ret a; }
     ret b;
 }
 
-# minf: the smaller of two f32 values.
+# the smaller of two f32 values
 fun minf(a: f32, b: f32) f32 {
     if (a < b) { ret a; }
     ret b;
 }
 
-# push_clip: intersect the active clip rect with (x0,y0,x1,y1) and push the old
-# one. quads emitted until the matching pop_clip are clipped to the intersection.
+# intersect the active clip rect with (x0,y0,x1,y1) and push the old one
+#
+# quads emitted until the matching pop_clip are clipped to the intersection.
 # beyond CLIP_DEPTH nesting the old rect is not saved but depth still balances.
 # ---
 # ctx: context
@@ -257,7 +258,7 @@ pub fun push_clip(ctx: *Context, x0: f32, y0: f32, x1: f32, y1: f32) {
     if (ctx.clip_y1 < ctx.clip_y0) { ctx.clip_y1 = ctx.clip_y0; }
 }
 
-# pop_clip: restore the clip rect saved by the matching push_clip.
+# restore the clip rect saved by the matching push_clip
 # ---
 # ctx: context
 pub fun pop_clip(ctx: *Context) {
@@ -271,7 +272,7 @@ pub fun pop_clip(ctx: *Context) {
     }
 }
 
-# push_origin: set the local origin to (nx, ny), saving the old one.
+# set the local origin to (nx, ny), saving the old one
 fun push_origin(ctx: *Context, nx: f32, ny: f32) {
     if (ctx.org_sp < CLIP_DEPTH) {
         ctx.org_xs[ctx.org_sp] = ctx.lx;
@@ -282,7 +283,7 @@ fun push_origin(ctx: *Context, nx: f32, ny: f32) {
     ctx.ly = ny;
 }
 
-# pop_origin: restore the local origin saved by the matching push_origin.
+# restore the local origin saved by the matching push_origin
 fun pop_origin(ctx: *Context) {
     if (ctx.org_sp == 0) { ret; }
     ctx.org_sp = ctx.org_sp - 1;
@@ -292,7 +293,8 @@ fun pop_origin(ctx: *Context) {
     }
 }
 
-# input_visible: whether screen point (x, y) lies inside the active clip rect.
+# whether screen point (x, y) lies inside the active clip rect
+#
 # widgets use it (with the cursor) so clipped-out rows never become hot.
 # ---
 # ctx: context
@@ -304,9 +306,11 @@ pub fun input_visible(ctx: *Context, x: f32, y: f32) u8 {
     ret 0;
 }
 
-# emit: shift a textured quad by the local origin, clip it to the active rect with
-# its uvs interpolated across the surviving fraction, and push it. quads fully
-# outside the clip are dropped; zero-extent axes keep their uvs unchanged.
+# shift a textured quad by the local origin, clip it to the active rect with
+# its uvs interpolated across the surviving fraction, and push it
+#
+# quads fully outside the clip are dropped; zero-extent axes keep their uvs
+# unchanged.
 fun emit(ctx: *Context, x0: f32, y0: f32, x1: f32, y1: f32, u0: f32, v0: f32, u1: f32, v1: f32, c: draw.Color) {
     val sx0: f32 = x0 + ctx.lx;
     val sy0: f32 = y0 + ctx.ly;
@@ -340,7 +344,7 @@ fun emit(ctx: *Context, x0: f32, y0: f32, x1: f32, y1: f32, u0: f32, v0: f32, u1
     record(ctx, draw.push_quad(?ctx.dl, nx0, ny0, nx1, ny1, nu0, nv0, nu1, nv1, c));
 }
 
-# quad: emit a solid-color rectangle sampling the atlas white cell.
+# emit a solid-color rectangle sampling the atlas white cell
 # ---
 # ctx: context
 # x0:  left x in pixels
@@ -355,7 +359,7 @@ pub fun quad(ctx: *Context, x0: f32, y0: f32, x1: f32, y1: f32, c: draw.Color) {
     emit(ctx, x0, y0, x1, y1, wu, wv, wu, wv, c);
 }
 
-# glyph: emit one character cell at (x, y), tinted by c.
+# emit one character cell at (x, y), tinted by c
 # ---
 # ctx: context
 # ch:  character to draw
@@ -371,7 +375,7 @@ pub fun glyph(ctx: *Context, ch: u8, x: f32, y: f32, c: draw.Color) {
     emit(ctx, x, y, x + font.GLYPH_W, y + font.GLYPH_H, u0, v0, u1, v1, c);
 }
 
-# text_at: draw a string starting at (x, y), advancing one glyph per character.
+# draw a string starting at (x, y), advancing one glyph per character
 # ---
 # ctx: context
 # s:   string to draw
@@ -388,7 +392,7 @@ pub fun text_at(ctx: *Context, s: str, x: f32, y: f32, c: draw.Color) {
     }
 }
 
-# Surface: a scrolled, clipped local drawing region returned by begin_surface.
+# a scrolled, clipped local drawing region returned by begin_surface
 # ---
 # x:        region left in screen pixels
 # y:        region top in screen pixels
@@ -407,7 +411,7 @@ pub rec Surface {
     inside:   u8;
 }
 
-# begin_surface: open a clipped sub-region with its own scrolled local origin.
+# open a clipped sub-region with its own scrolled local origin
 #
 # content drawn at local (cx, cy) lands at screen (x - scroll_x + cx,
 # y - scroll_y + cy) and is clipped to the region. the returned Surface reports
@@ -438,7 +442,7 @@ pub fun begin_surface(ctx: *Context, x: f32, y: f32, w: f32, h: f32, scroll_x: f
     ret s;
 }
 
-# end_surface: close the region opened by begin_surface, restoring clip and origin.
+# close the region opened by begin_surface, restoring clip and origin
 # ---
 # ctx:  context
 # surf: the surface returned by begin_surface

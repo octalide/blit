@@ -1,7 +1,8 @@
-# headless smoke: drives a full blit frame without a GL backend, hosting the
-# library's tests under a bin artifact (a static lib carries no _start, so the
-# tests must be built and run through a bin). exercises the public surface end to
-# end and prints the resulting vertex count.
+# drives a full blit frame without a GL backend, hosting the library's tests
+# under a bin artifact (a static lib carries no _start, so the tests must be
+# built and run through a bin)
+#
+# exercises the public surface end to end and prints the resulting vertex count.
 
 use std.runtime;
 use std.types.size.usize;

@@ -1,4 +1,4 @@
-# blit.widget: the v0 widgets — panel, text, button, checkbox, slider.
+# the v0 widgets: panel, text, button, checkbox, slider
 #
 # each widget places itself at the layout cursor, advances the cursor for the
 # next one, emits its geometry through the context painter, and hit-tests against
@@ -20,13 +20,13 @@ use input:   blit.input;
 use font:    blit.font;
 use context: blit.context;
 
-# PAD: spacing between widgets and inside widget chrome, in pixels.
+# spacing between widgets and inside widget chrome, in pixels
 val PAD: f32 = 4.0;
 
-# HANDLE_W: slider handle width in pixels.
+# slider handle width in pixels
 val HANDLE_W: f32 = 6.0;
 
-# row_h: height of an interactive row (a glyph plus padding above and below).
+# height of an interactive row (a glyph plus padding above and below)
 fun row_h() f32 {
     ret font.GLYPH_H + PAD * 2.0::f32;
 }
@@ -44,20 +44,20 @@ fun c_title()         draw.Color { ret draw.rgba(0.20::f32, 0.20::f32, 0.26::f32
 fun c_title_hot()     draw.Color { ret draw.rgba(0.28::f32, 0.28::f32, 0.36::f32, 1.0::f32); }
 fun c_window()        draw.Color { ret draw.rgba(0.10::f32, 0.10::f32, 0.12::f32, 0.95::f32); }
 
-# clampf: clamp v to [lo, hi].
+# clamp v to [lo, hi]
 fun clampf(v: f32, lo: f32, hi: f32) f32 {
     if (v < lo) { ret lo; }
     if (v > hi) { ret hi; }
     ret v;
 }
 
-# advance: drop the cursor to the next row, back at the panel's left edge.
+# drop the cursor to the next row, back at the panel's left edge
 fun advance(ctx: *context.Context, h: f32) {
     ctx.cx = ctx.ox;
     ctx.cy = ctx.cy + h + PAD;
 }
 
-# begin_panel: start a layout column at (x, y) of width w and emit its background.
+# start a layout column at (x, y) of width w and emit its background
 #
 # the background height is unknown until the panel's widgets are placed, so a
 # zero-height placeholder is emitted now and grown to fit by end_panel. the
@@ -80,8 +80,9 @@ pub fun begin_panel(ctx: *context.Context, x: f32, y: f32, w: f32) usize {
     ret handle;
 }
 
-# end_panel: grow the panel background to enclose every widget placed since
-# begin_panel. a no-op if the background was never emitted (allocation failure).
+# grow the panel background to enclose every widget placed since begin_panel
+#
+# a no-op if the background was never emitted (allocation failure).
 # ---
 # ctx:    context
 # handle: the value returned by begin_panel
@@ -102,7 +103,7 @@ pub fun end_panel(ctx: *context.Context, handle: usize) {
     p[handle + 5].x = x0; p[handle + 5].y = y1;
 }
 
-# text: draw a line of text at the cursor and advance to the next row.
+# draw a line of text at the cursor and advance to the next row
 # ---
 # ctx: context
 # s:   string to draw
@@ -111,7 +112,7 @@ pub fun text(ctx: *context.Context, s: str) {
     advance(ctx, font.GLYPH_H);
 }
 
-# button: a full-width clickable button with a centered label.
+# a full-width clickable button with a centered label
 #
 # returns true on the frame the button is released while the cursor is still
 # over it, after having been pressed on it.
@@ -151,7 +152,7 @@ pub fun button(ctx: *context.Context, label: str) bool {
     ret clicked;
 }
 
-# checkbox: a labeled toggle. flips @state when clicked.
+# a labeled toggle that flips @state when clicked
 # ---
 # ctx:   context
 # label: text drawn to the right of the box
@@ -194,7 +195,7 @@ pub fun checkbox(ctx: *context.Context, label: str, state: *u8) bool {
     ret toggled;
 }
 
-# slider_f: a horizontal slider mapping @v linearly onto [lo, hi].
+# a horizontal slider mapping @v linearly onto [lo, hi]
 #
 # while the handle is held, @v tracks the cursor's x within the track. the label
 # is drawn on the left of the track.
@@ -249,8 +250,8 @@ pub fun slider_f(ctx: *context.Context, label: str, v: *f32, lo: f32, hi: f32) b
     ret changed;
 }
 
-# dropdown: an accordion select — shows the current option and, while open, lays
-# out the options as selectable rows beneath it.
+# an accordion select: shows the current option and, while open, lays
+# out the options as selectable rows beneath it
 #
 # clicking the header toggles the open state (persisted on the context, so only
 # one dropdown is open at a time). clicking an option sets @selected and closes.
@@ -327,10 +328,10 @@ pub fun dropdown(ctx: *context.Context, label: str, selected: *usize, options: *
     ret changed;
 }
 
-# region_clicked: hit-test an arbitrary screen rect with button click semantics.
+# hit-test an arbitrary screen rect with button click semantics
 #
 # returns 1 on the frame the primary button releases inside the rect after being
-# pressed inside it. emits no geometry — the consumer draws the affordance (an
+# pressed inside it. emits no geometry, the consumer draws the affordance (an
 # icon, a corner toggle) itself. respects the active clip stack.
 # ---
 # ctx: context
@@ -353,7 +354,7 @@ pub fun region_clicked(ctx: *context.Context, x0: f32, y0: f32, x1: f32, y1: f32
     ret clicked;
 }
 
-# Window: consumer-owned state for a draggable, collapsible titled window.
+# consumer-owned state for a draggable, collapsible titled window
 # ---
 # x:     window left in screen pixels, updated while dragging the titlebar
 # y:     window top in screen pixels, updated while dragging the titlebar
@@ -368,7 +369,7 @@ pub rec Window {
     title: str;
 }
 
-# begin_window: draw a window's titlebar and, when open, start its body column.
+# draw a window's titlebar and, when open, start its body column
 #
 # the titlebar drags the window (press and move updates win.x/win.y) and carries a
 # collapse box on the left that toggles win.open. when open, the layout cursor is
@@ -432,8 +433,9 @@ pub fun begin_window(ctx: *context.Context, win: *Window) usize {
     ret handle;
 }
 
-# end_window: grow the window body to enclose its widgets, like end_panel. a
-# no-op when the window is collapsed or the body placeholder was never emitted.
+# grow the window body to enclose its widgets, like end_panel
+#
+# a no-op when the window is collapsed or the body placeholder was never emitted.
 # ---
 # ctx:    context
 # win:    pointer to the window state

@@ -1,11 +1,11 @@
-# blit.input: per-frame input the consumer fills before calling widgets.
+# per-frame input the consumer fills before calling widgets
 #
-# v0 covers the mouse only — position and primary button. the consumer writes
+# v0 covers the mouse only: position and primary button. the consumer writes
 # mx/my/down each frame; the context carries the previous frame's button state
 # into prev_down so press and release edges can be detected. extend with keys
 # and scroll later.
 
-# Input: mouse input for a single frame.
+# mouse input for a single frame
 # ---
 # mx:        cursor x in pixels
 # my:        cursor y in pixels
@@ -18,7 +18,7 @@ pub rec Input {
     prev_down: u8;
 }
 
-# pressed: 1 on the frame the primary button transitions from up to down.
+# 1 on the frame the primary button transitions from up to down
 # ---
 # in:  input state
 # ret: 1 if pressed this frame, else 0
@@ -27,7 +27,7 @@ pub fun pressed(in: Input) u8 {
     ret 0;
 }
 
-# released: 1 on the frame the primary button transitions from down to up.
+# 1 on the frame the primary button transitions from down to up
 # ---
 # in:  input state
 # ret: 1 if released this frame, else 0
@@ -36,7 +36,7 @@ pub fun released(in: Input) u8 {
     ret 0;
 }
 
-# in_rect: test whether the cursor lies in the half-open rect [x0, x1) x [y0, y1).
+# test whether the cursor lies in the half-open rect [x0, x1) x [y0, y1)
 # ---
 # in:  input state
 # x0:  left edge in pixels (inclusive)
