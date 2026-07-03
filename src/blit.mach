@@ -1,4 +1,4 @@
-# blit — an immediate-mode GUI library.
+# an immediate-mode GUI library
 #
 # widgets accumulate a draw list of textured, colored triangles and report
 # interaction; the consumer feeds input each frame, calls widget functions,
@@ -13,5 +13,5 @@ fwd blit.input;
 fwd blit.context;
 fwd blit.widget;
 
-# VERSION: blit library version.
+# blit library version
 pub val VERSION: str = "0.1.1";
