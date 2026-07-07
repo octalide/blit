@@ -1,4 +1,4 @@
-# blit.draw: the draw list — a growable buffer of colored, textured triangle vertices.
+# the draw list, a growable buffer of colored, textured triangle vertices
 #
 # widgets accumulate vertices here; each frame the consumer uploads data()/count()
 # to a dynamic vertex buffer and renders them as GL_TRIANGLES. positions are in
@@ -17,10 +17,10 @@ use std.types.result.unwrap_ok;
 use allo: std.allocator;
 use page: std.allocator.page;
 
-# INIT_CAP: vertex capacity allocated by init before any growth.
+# vertex capacity allocated by init before any growth
 pub val INIT_CAP: usize = 1024;
 
-# Color: straight (non-premultiplied) rgba, each channel in [0, 1].
+# straight (non-premultiplied) rgba, each channel in [0, 1]
 # ---
 # r: red channel
 # g: green channel
@@ -33,7 +33,7 @@ pub rec Color {
     a: f32;
 }
 
-# rgba: construct a Color from four channel values.
+# construct a Color from four channel values
 # ---
 # r:   red channel in [0, 1]
 # g:   green channel in [0, 1]
@@ -49,7 +49,7 @@ pub fun rgba(r: f32, g: f32, b: f32, a: f32) Color {
     ret c;
 }
 
-# Vert: a single vertex: pixel-space position, atlas uv, and color.
+# a single vertex: pixel-space position, atlas uv, and color
 # ---
 # x: pixel-space x
 # y: pixel-space y
@@ -70,7 +70,7 @@ pub rec Vert {
     a: f32;
 }
 
-# DrawList: a growable vertex buffer accumulated over one frame.
+# a growable vertex buffer accumulated over one frame
 # ---
 # verts: backing buffer (nil before init)
 # cap:   capacity in vertices
@@ -83,7 +83,7 @@ pub rec DrawList {
     a:     *allo.Allocator;
 }
 
-# init: allocate a draw list's initial backing buffer.
+# allocate a draw list's initial backing buffer
 # ---
 # dl:  draw list to initialize
 # a:   allocator to back the buffer
@@ -101,7 +101,7 @@ pub fun init(dl: *DrawList, a: *allo.Allocator) Option[str] {
     ret none[str]();
 }
 
-# free: release the backing buffer and reset the draw list to empty.
+# release the backing buffer and reset the draw list to empty
 # ---
 # dl: draw list to free
 pub fun free(dl: *DrawList) {
@@ -112,7 +112,7 @@ pub fun free(dl: *DrawList) {
     dl.len   = 0;
 }
 
-# reset: clear the draw list for a new frame, keeping allocated capacity.
+# clear the draw list for a new frame, keeping allocated capacity
 # ---
 # dl: draw list to reset
 pub fun reset(dl: *DrawList) {
@@ -120,7 +120,7 @@ pub fun reset(dl: *DrawList) {
     dl.len = 0;
 }
 
-# count: number of vertices currently in the draw list.
+# number of vertices currently in the draw list
 # ---
 # dl:  draw list to query
 # ret: vertex count
@@ -128,7 +128,7 @@ pub fun count(dl: *DrawList) usize {
     ret dl.len;
 }
 
-# data: pointer to the first vertex, for upload (nil if never grown).
+# pointer to the first vertex, for upload (nil if never grown)
 # ---
 # dl:  draw list to query
 # ret: pointer to the vertex buffer
@@ -136,7 +136,7 @@ pub fun data(dl: *DrawList) *Vert {
     ret dl.verts;
 }
 
-# grow: ensure room for at least one more vertex, doubling capacity when full.
+# ensure room for at least one more vertex, doubling capacity when full
 # ---
 # dl:  draw list to grow
 # ret: none on success, some(message) on allocation failure
@@ -153,7 +153,7 @@ fun grow(dl: *DrawList) Option[str] {
     ret none[str]();
 }
 
-# push_vert: append one vertex, growing the buffer if full.
+# append one vertex, growing the buffer if full
 # ---
 # dl:  draw list to append to
 # v:   vertex to append
@@ -166,7 +166,7 @@ pub fun push_vert(dl: *DrawList, v: Vert) Option[str] {
     ret none[str]();
 }
 
-# push_quad: append an axis-aligned quad as two triangles (6 vertices).
+# append an axis-aligned quad as two triangles (6 vertices)
 #
 # (x0, y0) is the top-left corner and (x1, y1) the bottom-right, with (u0, v0)
 # and (u1, v1) the matching atlas corners. all six vertices share color c.
