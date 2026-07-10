@@ -1,10 +1,8 @@
 [project]
-id          = "blit"
-name        = "Mach Blit Library"
-description = "Mach immediate-mode GUI library"
-version     = "0.2.0"
-src         = "src"
-out         = "out/{target.name}/{profile.name}"
+id      = "blit"
+version = "0.2.0"
+src     = "src"
+out     = "out/{target.name}/{profile.name}"
 
 [target.linux-x86_64]
 isa = "x86_64"
@@ -22,22 +20,28 @@ os  = "darwin"
 abi = "sysv64"
 
 [profile.debug]
-opt = 0
+opt   = 0
+debug = true
 
 [profile.release]
-opt = 2
+opt   = 2
+debug = false
 
 [artifact.blit]
 kind    = "static"
 entry   = "blit.mach"
 out     = "lib/blit"
 targets = ["*"]
+link    = []
+need    = []
 
 [artifact.harness]
 kind    = "bin"
 entry   = "bin/harness.mach"
 out     = "bin/blit"
 targets = ["*"]
+link    = []
+need    = []
 
 [dep.mach-std]
 git = "https://github.com/briar-systems/mach-std"
