@@ -41,6 +41,11 @@ pub fun control_row_height() f32 {
     ret row_h() + PAD;
 }
 
+# spacing between adjacent layout rows and around panel content
+pub fun layout_gap() f32 {
+    ret PAD;
+}
+
 fun c_panel()         draw.Color { ret draw.rgba(0.10::f32, 0.10::f32, 0.12::f32, 0.85::f32); }
 fun c_text()          draw.Color { ret draw.rgba(0.92::f32, 0.92::f32, 0.95::f32, 1.0::f32); }
 fun c_btn()           draw.Color { ret draw.rgba(0.25::f32, 0.25::f32, 0.30::f32, 1.0::f32); }
@@ -495,6 +500,7 @@ test "widget: text advances the cursor by one row" {
 test "widget: public row metrics match layout advancement" {
     if (text_row_height() != font.GLYPH_H + PAD) { ret 1; }
     if (control_row_height() != row_h() + PAD) { ret 2; }
+    if (layout_gap() != PAD) { ret 3; }
     ret 0;
 }
 
