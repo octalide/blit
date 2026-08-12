@@ -31,6 +31,16 @@ fun row_h() f32 {
     ret font.GLYPH_H + PAD * 2.0::f32;
 }
 
+# vertical space consumed by one text row, including the following gap
+pub fun text_row_height() f32 {
+    ret font.GLYPH_H + PAD;
+}
+
+# vertical space consumed by one control row, including the following gap
+pub fun control_row_height() f32 {
+    ret row_h() + PAD;
+}
+
 fun c_panel()         draw.Color { ret draw.rgba(0.10::f32, 0.10::f32, 0.12::f32, 0.85::f32); }
 fun c_text()          draw.Color { ret draw.rgba(0.92::f32, 0.92::f32, 0.95::f32, 1.0::f32); }
 fun c_btn()           draw.Color { ret draw.rgba(0.25::f32, 0.25::f32, 0.30::f32, 1.0::f32); }
@@ -479,6 +489,12 @@ test "widget: text advances the cursor by one row" {
     if (context.draw_count(?ctx) <= n0) { ret 1; }
 
     context.free(?ctx);
+    ret 0;
+}
+
+test "widget: public row metrics match layout advancement" {
+    if (text_row_height() != font.GLYPH_H + PAD) { ret 1; }
+    if (control_row_height() != row_h() + PAD) { ret 2; }
     ret 0;
 }
 
