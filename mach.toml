@@ -1,6 +1,6 @@
 [project]
 id      = "blit"
-version = "0.2.0"
+version = "0.2.1"
 src     = "src"
 out     = "out/{target.name}/{profile.name}"
 
@@ -22,12 +22,12 @@ abi = "sysv64"
 [profile.debug]
 opt   = 0
 debug = true
-simd  = "scalarize"
+simd = "scalarize"
 
 [profile.release]
 opt   = 2
 debug = false
-simd  = "scalarize"
+simd = "scalarize"
 
 [artifact.blit]
 kind    = "static"

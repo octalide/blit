@@ -31,6 +31,21 @@ fun row_h() f32 {
     ret font.GLYPH_H + PAD * 2.0::f32;
 }
 
+# vertical space consumed by one text row, including the following gap
+pub fun text_row_height() f32 {
+    ret font.GLYPH_H + PAD;
+}
+
+# vertical space consumed by one control row, including the following gap
+pub fun control_row_height() f32 {
+    ret row_h() + PAD;
+}
+
+# spacing between adjacent layout rows and around panel content
+pub fun layout_gap() f32 {
+    ret PAD;
+}
+
 fun c_panel()         draw.Color { ret draw.rgba(0.10::f32, 0.10::f32, 0.12::f32, 0.85::f32); }
 fun c_text()          draw.Color { ret draw.rgba(0.92::f32, 0.92::f32, 0.95::f32, 1.0::f32); }
 fun c_btn()           draw.Color { ret draw.rgba(0.25::f32, 0.25::f32, 0.30::f32, 1.0::f32); }
@@ -297,10 +312,10 @@ pub fun dropdown(ctx: *context.Context, label: str, selected: *usize, options: *
     advance(ctx, h);
 
     var changed: u8 = 0;
-    if (ctx.open_dropdown == id) {
-        var i: usize = 0;
-        for (i < count) {
-            val oid: u64 = context.next_id(ctx);
+    var i: usize = 0;
+    for (i < count) {
+        val oid: u64 = context.next_id(ctx);
+        if (ctx.open_dropdown == id) {
             val ox0: f32 = ctx.cx;
             val oy0: f32 = ctx.cy;
             val ox1: f32 = ctx.cx + ctx.pw;
@@ -322,8 +337,8 @@ pub fun dropdown(ctx: *context.Context, label: str, selected: *usize, options: *
             context.text_at(ctx, options[i], ox0 + PAD, oy0 + (h - font.GLYPH_H) / 2.0::f32, c_text());
 
             advance(ctx, h);
-            i = i + 1;
         }
+        i = i + 1;
     }
     ret changed;
 }
@@ -479,6 +494,13 @@ test "widget: text advances the cursor by one row" {
     if (context.draw_count(?ctx) <= n0) { ret 1; }
 
     context.free(?ctx);
+    ret 0;
+}
+
+test "widget: public row metrics match layout advancement" {
+    if (text_row_height() != font.GLYPH_H + PAD) { ret 1; }
+    if (control_row_height() != row_h() + PAD) { ret 2; }
+    if (layout_gap() != PAD) { ret 3; }
     ret 0;
 }
 
@@ -653,6 +675,47 @@ test "widget: dropdown opens on click and selects an option" {
     if (dropdown(?ctx, "pick", ?sel, ?opts[0], 3) != 1) { ret 1; }
     if (sel != 1) { ret 1; }
     if (ctx.open_dropdown != 0) { ret 1; }
+    context.end(?ctx);
+
+    context.free(?ctx);
+    ret 0;
+}
+
+test "widget: adjacent dropdown ids stay stable when one expands" {
+    var a: allo.Allocator;
+    page.make(?a);
+    var ctx: context.Context;
+    if (context.init(?ctx, ?a).has_value) { ret 1; }
+
+    var opts: [3]str;
+    opts[0] = "a";
+    opts[1] = "b";
+    opts[2] = "c";
+    var first: usize = 0;
+    var second: usize = 0;
+    var in: input.Input;
+
+    context.begin(?ctx, in, 200.0::f32, 200.0::f32);
+    begin_panel(?ctx, 0.0::f32, 0.0::f32, 100.0::f32);
+    dropdown(?ctx, "first", ?first, ?opts[0], 3);
+    dropdown(?ctx, "second", ?second, ?opts[0], 3);
+    if (ctx.seq != 8) { ret 2; }
+    context.end(?ctx);
+
+    ctx.open_dropdown = 1;
+    context.begin(?ctx, in, 200.0::f32, 200.0::f32);
+    begin_panel(?ctx, 0.0::f32, 0.0::f32, 100.0::f32);
+    dropdown(?ctx, "first", ?first, ?opts[0], 3);
+    dropdown(?ctx, "second", ?second, ?opts[0], 3);
+    if (ctx.seq != 8 || ctx.open_dropdown != 1) { ret 3; }
+    context.end(?ctx);
+
+    ctx.open_dropdown = 5;
+    context.begin(?ctx, in, 200.0::f32, 200.0::f32);
+    begin_panel(?ctx, 0.0::f32, 0.0::f32, 100.0::f32);
+    dropdown(?ctx, "first", ?first, ?opts[0], 3);
+    dropdown(?ctx, "second", ?second, ?opts[0], 3);
+    if (ctx.seq != 8 || ctx.open_dropdown != 5) { ret 4; }
     context.end(?ctx);
 
     context.free(?ctx);
