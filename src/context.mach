@@ -262,6 +262,19 @@ fun record(ctx: *Context, e: Option[str]) {
 # tex: consumer texture handle, nil for the font atlas
 pub fun set_texture(ctx: *Context, tex: ptr) {
     if (ctx.tex == tex) { ret; }
+    # a retarget with nothing drawn since the last span closed reopens that
+    # span when it sampled the same texture, so a row of images through one
+    # sheet costs one span however often the atlas was targeted between them
+    val len: usize = draw.count(?ctx.dl);
+    if (len == ctx.run_start && ctx.run_len > 0
+        && ctx.runs[ctx.run_len - 1].tex == tex
+        && ctx.runs[ctx.run_len - 1].start
+            + ctx.runs[ctx.run_len - 1].count == len) {
+        ctx.run_len = ctx.run_len - 1;
+        ctx.run_start = ctx.runs[ctx.run_len].start;
+        ctx.tex = tex;
+        ret;
+    }
     flush_run(ctx);
     ctx.tex = tex;
 }
@@ -816,7 +829,7 @@ test "context: texture runs divide the draw list in draw order" {
     ret 0;
 }
 
-test "context: retargeting with nothing drawn records no empty span" {
+test "context: images through one texture merge into one span" {
     var a: allo.Allocator;
     page.make(?a);
     var ctx: Context;
@@ -836,12 +849,13 @@ test "context: retargeting with nothing drawn records no empty span" {
              0.0::f32, 0.0::f32, 1.0::f32, 1.0::f32, white);
     end(?ctx);
 
-    var i: usize = 0;
-    for (i < run_count(?ctx)) {
-        if (run_at(?ctx, i).count == 0) { ret 1; }
-        i = i + 1;
+    # one span: the second image reopened the first's rather than closing
+    # an empty atlas bracket between them
+    if (run_count(?ctx) != 1) { ret 1; }
+    val whole: Run = run_at(?ctx, 0);
+    if (whole.tex != (?sheet)::ptr || whole.start != 0 || whole.count != 12) {
+        ret 1;
     }
-    if (run_count(?ctx) != 2) { ret 1; }
 
     free(?ctx);
     ret 0;
