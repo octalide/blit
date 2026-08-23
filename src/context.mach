@@ -27,6 +27,20 @@ use font:  blit.font;
 # maximum nesting of pushed clip rects and local origins
 pub val CLIP_DEPTH: usize = 16;
 
+# maximum single-texture spans one frame's draw list may divide into
+pub val RUN_DEPTH: usize = 64;
+
+# one contiguous span of the draw list sampling a single texture
+# ---
+# tex:   consumer texture handle, nil for the font atlas
+# start: first vertex of the span
+# count: vertices in the span
+pub rec Run {
+    tex:   ptr;
+    start: usize;
+    count: usize;
+}
+
 # immediate-mode UI state for one consumer
 # ---
 # dl:            draw list accumulated each frame
@@ -58,6 +72,10 @@ pub val CLIP_DEPTH: usize = 16;
 # org_sp:        local-origin stack depth
 # org_xs:        saved parent local-origin xs
 # org_ys:        saved parent local-origin ys
+# tex:           texture subsequent geometry samples (nil = font atlas)
+# run_start:     first vertex of the span being accumulated
+# runs:          closed single-texture spans, in draw order
+# run_len:       how many spans are closed
 # oom:           1 if a draw-list growth failed this frame, else 0
 pub rec Context {
     dl:            draw.DrawList;
@@ -89,6 +107,10 @@ pub rec Context {
     org_sp:        usize;
     org_xs:        [16]f32;
     org_ys:        [16]f32;
+    tex:           ptr;
+    run_start:     usize;
+    runs:          [64]Run;
+    run_len:       usize;
     oom:           u8;
 }
 
@@ -127,6 +149,9 @@ pub fun init(ctx: *Context, a: *allo.Allocator) Option[str] {
     ctx.clip_y1 = 0.0::f32;
     ctx.clip_sp = 0;
     ctx.org_sp = 0;
+    ctx.tex = nil;
+    ctx.run_start = 0;
+    ctx.run_len = 0;
     ctx.oom = 0;
     ret none[str]();
 }
@@ -170,13 +195,19 @@ pub fun begin(ctx: *Context, in: input.Input, sw: f32, sh: f32) {
     ctx.clip_sp = 0;
     ctx.org_sp = 0;
 
+    ctx.tex = nil;
+    ctx.run_start = 0;
+    ctx.run_len = 0;
+
     draw.reset(?ctx.dl);
 }
 
-# finish a frame: drop the active widget once the button is released
+# finish a frame: close the last texture span and drop the active widget
+# once the button is released
 # ---
 # ctx: context
 pub fun end(ctx: *Context) {
+    flush_run(ctx);
     if (ctx.in.down == 0) { ctx.active = 0; }
 }
 
@@ -217,6 +248,77 @@ pub fun draw_count(ctx: *Context) usize {
 # fold a draw-list result into the context's oom flag
 fun record(ctx: *Context, e: Option[str]) {
     if (e.has_value) { ctx.oom = 1; }
+}
+
+# sample subsequent geometry from one consumer texture, nil for the atlas
+#
+# a switch with nothing emitted since the last one retargets in place, so
+# alternating between an image and the atlas records spans only where
+# something was drawn. a frame that closes more than RUN_DEPTH spans keeps
+# drawing into the last one, which mistextures those vertices rather than
+# dropping them; raise RUN_DEPTH before drawing that many textures.
+# ---
+# ctx: context
+# tex: consumer texture handle, nil for the font atlas
+pub fun set_texture(ctx: *Context, tex: ptr) {
+    if (ctx.tex == tex) { ret; }
+    flush_run(ctx);
+    ctx.tex = tex;
+}
+
+# number of single-texture spans the frame's draw list divides into
+#
+# complete only after end(); the span still accumulating is not counted.
+# ---
+# ctx: context
+# ret: span count
+pub fun run_count(ctx: *Context) usize {
+    ret ctx.run_len;
+}
+
+# one single-texture span of the draw list, in draw order
+# ---
+# ctx:   context
+# index: span index below run_count()
+# ret:   the span, or an empty one for an index out of range
+pub fun run_at(ctx: *Context, index: usize) Run {
+    if (index >= ctx.run_len) { ret Run{tex: nil, start: 0, count: 0}; }
+    ret ctx.runs[index];
+}
+
+# close the span being accumulated, if it holds any vertices
+fun flush_run(ctx: *Context) {
+    val len: usize = draw.count(?ctx.dl);
+    if (len == ctx.run_start) { ret; }
+    if (ctx.run_len >= RUN_DEPTH) { ret; }
+    ctx.runs[ctx.run_len] = Run{
+        tex: ctx.tex, start: ctx.run_start, count: len - ctx.run_start};
+    ctx.run_len = ctx.run_len + 1;
+    ctx.run_start = len;
+}
+
+# emit one rectangle sampling a consumer texture
+#
+# passes through the same local origin and clip as every quad, with uvs
+# interpolated when clipped. geometry returns to the atlas afterwards, so
+# whatever draws next needs no bookkeeping.
+# ---
+# ctx: context
+# tex: consumer texture handle
+# x0:  left x in pixels
+# y0:  top y in pixels
+# x1:  right x in pixels
+# y1:  bottom y in pixels
+# u0:  left u in the texture
+# v0:  top v in the texture
+# u1:  right u in the texture
+# v1:  bottom v in the texture
+# c:   multiplicative tint
+pub fun image_at(ctx: *Context, tex: ptr, x0: f32, y0: f32, x1: f32, y1: f32,
+                 u0: f32, v0: f32, u1: f32, v1: f32, c: draw.Color) {
+    set_texture(ctx, tex);
+    emit(ctx, x0, y0, x1, y1, u0, v0, u1, v1, c);
+    set_texture(ctx, nil);
 }
 
 # the larger of two f32 values
@@ -677,6 +779,69 @@ test "context: begin_surface reports the cursor outside its region" {
     val s: Surface = begin_surface(?ctx, 0.0::f32, 0.0::f32, 10.0::f32, 10.0::f32, 0.0::f32, 0.0::f32);
     if (s.inside != 0) { ret 1; }
     end_surface(?ctx, s);
+
+    free(?ctx);
+    ret 0;
+}
+
+test "context: texture runs divide the draw list in draw order" {
+    var a: allo.Allocator;
+    page.make(?a);
+    var ctx: Context;
+    if (init(?ctx, ?a).has_value) { ret 1; }
+
+    var in: input.Input;
+    in.mx = 0.0::f32; in.my = 0.0::f32; in.down = 0; in.prev_down = 0;
+    begin(?ctx, in, 100.0::f32, 100.0::f32);
+
+    val white: draw.Color = draw.rgba(1.0::f32, 1.0::f32, 1.0::f32, 1.0::f32);
+    var sheet: u64 = 7;
+
+    # atlas span, one image span, then atlas again
+    quad(?ctx, 0.0::f32, 0.0::f32, 10.0::f32, 10.0::f32, white);
+    image_at(?ctx, (?sheet)::ptr, 10.0::f32, 0.0::f32, 20.0::f32, 10.0::f32,
+             0.0::f32, 0.0::f32, 1.0::f32, 1.0::f32, white);
+    quad(?ctx, 20.0::f32, 0.0::f32, 30.0::f32, 10.0::f32, white);
+    end(?ctx);
+
+    if (run_count(?ctx) != 3) { ret 1; }
+    val head: Run = run_at(?ctx, 0);
+    if (head.tex != nil || head.start != 0 || head.count != 6) { ret 1; }
+    val mid: Run = run_at(?ctx, 1);
+    if (mid.tex != (?sheet)::ptr || mid.start != 6 || mid.count != 6) { ret 1; }
+    val tail: Run = run_at(?ctx, 2);
+    if (tail.tex != nil || tail.start != 12 || tail.count != 6) { ret 1; }
+
+    free(?ctx);
+    ret 0;
+}
+
+test "context: retargeting with nothing drawn records no empty span" {
+    var a: allo.Allocator;
+    page.make(?a);
+    var ctx: Context;
+    if (init(?ctx, ?a).has_value) { ret 1; }
+
+    var in: input.Input;
+    in.mx = 0.0::f32; in.my = 0.0::f32; in.down = 0; in.prev_down = 0;
+    begin(?ctx, in, 100.0::f32, 100.0::f32);
+
+    val white: draw.Color = draw.rgba(1.0::f32, 1.0::f32, 1.0::f32, 1.0::f32);
+    var sheet: u64 = 7;
+
+    # two images through the same texture, nothing on the atlas between
+    image_at(?ctx, (?sheet)::ptr, 0.0::f32, 0.0::f32, 10.0::f32, 10.0::f32,
+             0.0::f32, 0.0::f32, 1.0::f32, 1.0::f32, white);
+    image_at(?ctx, (?sheet)::ptr, 10.0::f32, 0.0::f32, 20.0::f32, 10.0::f32,
+             0.0::f32, 0.0::f32, 1.0::f32, 1.0::f32, white);
+    end(?ctx);
+
+    var i: usize = 0;
+    for (i < run_count(?ctx)) {
+        if (run_at(?ctx, i).count == 0) { ret 1; }
+        i = i + 1;
+    }
+    if (run_count(?ctx) != 2) { ret 1; }
 
     free(?ctx);
     ret 0;
